@@ -397,6 +397,7 @@
     function migrateNames() { for (const s of sessions) { for (const e of s.exercises) { const n = NAME_MAP[e.name]; if (n) e.name = n; } } }
 
     function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+    function todaySessionId() { const d = new Date(); return `${activeProfile}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
     function fmt(ts) { return new Date(ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
     function profile() { return PROFILES.find(p => p.id === activeProfile) || PROFILES[0]; }
     function profileSessions(pid) { return sessions.filter(s => s.profile === (pid || activeProfile)).sort((a, b) => b.date - a.date); }
@@ -450,7 +451,10 @@
       try {
         const rec = await fetchBin();
         if (rec && rec.sessions && rec.sessions.length) {
-          sessions = rec.sessions;
+          const localSnap = sessions;
+          const merged = rec.sessions.map(rs => { const ls = localSnap.find(s => s.id === rs.id); return (ls && ls.exercises.length > rs.exercises.length) ? ls : rs; });
+          const remoteIds = new Set(rec.sessions.map(s => s.id));
+          sessions = [...merged, ...localSnap.filter(s => !remoteIds.has(s.id))];
           customExercises = rec.customExercises || [];
           customProfiles = rec.customProfiles || [];
           PROFILES = [...BASE_PROFILES, ...customProfiles];
@@ -481,6 +485,14 @@
       } catch {
         showSync('offline', 'Saved locally — will sync when back online');
       }
+    }
+
+    async function autoSave() {
+      if (!draft) return;
+      const idx = sessions.findIndex(s => s.id === draft.id);
+      if (idx >= 0) sessions[idx] = structuredClone(draft);
+      else sessions.push(structuredClone(draft));
+      await save();
     }
 
     function render() {
@@ -519,7 +531,8 @@
           if (last.note) html += `<div style="font-size:12px;font-style:italic;color:var(--color-text-tertiary);margin-top:6px;padding-top:6px;border-top:0.5px solid var(--color-border-tertiary)">${last.note}</div>`;
           html += `</div>`;
         }
-        return html + `<button class="btn-primary" style="width:100%;padding:12px;font-size:15px" onclick="startSession()">Start new session</button>`;
+        const todayExists = sessions.some(s => s.id === todaySessionId());
+        return html + `<button class="btn-primary" style="width:100%;padding:12px;font-size:15px" onclick="startSession()">${todayExists ? 'Resume today\'s session' : 'Start new session'}</button>`;
       }
 
       const sessionDate = editing ? fmt(draft.date) : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
@@ -757,20 +770,16 @@
 
     function switchProfile(id) { activeProfile = id; draft = null; render(); }
     function setView(v) { view = v; render(); }
-    function startSession() { draft = { id: uid(), profile: activeProfile, date: Date.now(), exercises: [], note: '' }; editing = false; render(); }
+    function startSession() { const todayId = todaySessionId(); const existing = sessions.find(s => s.id === todayId); draft = existing ? structuredClone(existing) : { id: todayId, profile: activeProfile, date: Date.now(), exercises: [], note: '' }; editing = false; render(); }
     function cancelSession() { draft = null; editing = false; render(); }
 
     async function saveSession() {
       const n = document.getElementById('sess-note');
       if (n) draft.note = n.value;
       if (!draft.exercises.length) { alert('Add at least one exercise.'); return; }
-      if (editing) {
-        const idx = sessions.findIndex(s => s.id === draft.id);
-        if (idx >= 0) { sessions[idx] = draft; }
-        editing = false;
-      } else {
-        sessions.push(draft);
-      }
+      const idx = sessions.findIndex(s => s.id === draft.id);
+      if (idx >= 0) sessions[idx] = draft; else sessions.push(draft);
+      editing = false;
       draft = null;
       await save(); view = 'history'; render();
     }
@@ -797,6 +806,7 @@
       saveNote();
       draft.exercises.push({ name: s.value, sets: [{ weight: '', reps: '' }], note: '' });
       render();
+      autoSave();
     }
     function addCustomEx() {
       const i = document.getElementById('custom-ex');
@@ -806,16 +816,18 @@
       saveNote();
       draft.exercises.push({ name: n, sets: [{ weight: '', reps: '' }], note: '' });
       render();
+      autoSave();
     }
-    function removeEx(ei) { saveNote(); draft.exercises.splice(ei, 1); render(); }
-    function addSet(ei) { saveNote(); draft.exercises[ei].sets.push({ weight: '', reps: '' }); render(); }
+    function removeEx(ei) { saveNote(); draft.exercises.splice(ei, 1); render(); autoSave(); }
+    function addSet(ei) { saveNote(); draft.exercises[ei].sets.push({ weight: '', reps: '' }); render(); autoSave(); }
     function removeSet(ei, si) {
       saveNote();
       draft.exercises[ei].sets.splice(si, 1);
       if (!draft.exercises[ei].sets.length) draft.exercises[ei].sets.push({ weight: '', reps: '' });
       render();
+      autoSave();
     }
-    function updSet(ei, si, f, v) { draft.exercises[ei].sets[si][f] = v; }
+    function updSet(ei, si, f, v) { draft.exercises[ei].sets[si][f] = v; autoSave(); }
     function saveNote() { const n = document.getElementById('sess-note'); if (n && draft) draft.note = n.value; }
 
     globalThis.addEventListener('offline', () => {
@@ -826,9 +838,10 @@
       try {
         const rec = await fetchBin();
         if (rec && rec.sessions && rec.sessions.length) {
+          const localSnap = sessions;
+          const merged = rec.sessions.map(rs => { const ls = localSnap.find(s => s.id === rs.id); return (ls && ls.exercises.length > rs.exercises.length) ? ls : rs; });
           const remoteIds = new Set(rec.sessions.map(s => s.id));
-          const localOnly = sessions.filter(s => !remoteIds.has(s.id));
-          sessions = [...rec.sessions, ...localOnly];
+          sessions = [...merged, ...localSnap.filter(s => !remoteIds.has(s.id))];
           migrateNames();
           saveLocal();
         }
