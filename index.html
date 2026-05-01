@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Workouts">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" id="theme-meta" content="#534AB7">
   <title>Workout Tracker</title>
 </head>
@@ -62,7 +63,8 @@
       font-family: var(--font-sans);
       color: var(--color-text-primary);
       font-size: 15px;
-      background: var(--color-background-primary)
+      background: var(--color-background-primary);
+      padding-bottom: env(safe-area-inset-bottom, 20px)
     }
 
     input,
@@ -350,6 +352,18 @@
       text-transform: uppercase;
       margin: 16px 0 8px
     }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0
+    }
   </style>
 
   <h2 class="sr-only">Workout tracker</h2>
@@ -365,6 +379,8 @@
 
     const EXERCISES = ['Bench Press', 'Incline Bench', 'Pectoral Fly', 'Dumbbell Chest Press', 'Incline Dumbbell', 'Chest Press', 'Shoulder Press', 'Lateral Raise', 'Rear Deltoid', 'Bicep Curl', 'Hammer Curls', 'Triceps Extension', 'Tricep Press', 'Overhead Tricep Extension', 'Tricep Cable', 'Skull Crushers', 'JM Press', 'Single-Arm Row', 'Lat Pulldown', 'Row', 'Leg Press', 'Goblet Squat', 'Romanian Deadlift', 'Leg Extension', 'Seated Leg Curl', 'Calf Raise', 'Abdominal', 'Torso Rotation', 'Linear Leg Press', 'Glute', 'Bicep Cable', 'Bicep Cable Unilateral'];
     const BASE_PROFILES = [{ id: 'jimmy', name: 'Jimmy', color: '#534AB7', bg: '#EEEDFE', initials: 'JI' }, { id: 'alan', name: 'Alan', color: '#B74A4A', bg: '#E1F5EE', initials: 'AL' }];
+    let baseProfileOverrides = {};
+    function buildProfiles() { PROFILES = [...BASE_PROFILES.map(p => ({ ...p, ...(baseProfileOverrides[p.id] || {}) })), ...customProfiles]; }
     let PROFILES = [...BASE_PROFILES];
     const PRESET_COLORS = [{ color: '#B33A3A', bg: '#FCEBEB' }, { color: '#A0520F', bg: '#FEF2E0' }, { color: '#7B6500', bg: '#FDF5C0' }, { color: '#1A7A3A', bg: '#E0F5E8' }, { color: '#0F6688', bg: '#E0F2F8' }, { color: '#6B3BA3', bg: '#F2EBFE' }];
     let selectedColorIdx = 0;
@@ -377,7 +393,7 @@
     const LS_KEY = 'wt-data-v1';
     function saveLocal() {
       try {
-        localStorage.setItem(LS_KEY, JSON.stringify({ sessions, customExercises, customProfiles }));
+        localStorage.setItem(LS_KEY, JSON.stringify({ sessions, customExercises, customProfiles, baseProfileOverrides }));
       } catch (e) {
         console.warn('Could not write to localStorage:', e);
       }
@@ -447,12 +463,13 @@
         sessions = local.sessions;
         customExercises = local.customExercises || [];
         customProfiles = local.customProfiles || [];
-        PROFILES = [...BASE_PROFILES, ...customProfiles];
+        baseProfileOverrides = local.baseProfileOverrides || {};
+        buildProfiles();
         migrateNames();
         render();
       }
 
-      // Sync with JSONBin in the background
+      // Sync with Supabase in the background
       try {
         const rec = await fetchBin();
         if (rec && rec.sessions && rec.sessions.length) {
@@ -465,11 +482,12 @@
           const remProf = rec.customProfiles || [];
           const remProfIds = new Set(remProf.map(p => p.id));
           customProfiles = [...remProf, ...customProfiles.filter(p => !remProfIds.has(p.id))];
-          PROFILES = [...BASE_PROFILES, ...customProfiles];
+          baseProfileOverrides = { ...(rec.baseProfileOverrides || {}), ...baseProfileOverrides };
+          buildProfiles();
           saveLocal();
         } else if (!local) {
           sessions = [...SEED];
-          await putBin({ sessions, customExercises: [], customProfiles: [] });
+          await putBin({ sessions, customExercises: [], customProfiles: [], baseProfileOverrides: {} });
           saveLocal();
         }
         migrateNames();
@@ -488,7 +506,7 @@
       saveLocal();
       showSync('syncing', 'Saving...');
       try {
-        await putBin({ sessions, customExercises, customProfiles });
+        await putBin({ sessions, customExercises, customProfiles, baseProfileOverrides });
         showSync('synced', 'Synced — ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
       } catch {
         showSync('offline', 'Saved locally — will sync when back online');
@@ -507,12 +525,16 @@
       const p = profile();
       const app = document.getElementById('app');
       let html = '';
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:0.5px solid var(--color-border-tertiary)">`;
+      html += `<div style="font-size:17px;font-weight:700;letter-spacing:-0.3px">Workouts</div>`;
+      html += `<button onclick="toggleDark()" style="padding:5px 12px;border-radius:20px;border:0.5px solid var(--color-border-secondary);font-size:12px;color:var(--color-text-secondary);background:var(--color-background-secondary)">${darkMode ? 'Light' : 'Dark'}</button>`;
+      html += `</div>`;
       html += `<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">`;
       for (const prof of PROFILES) {
         const a = prof.id === activeProfile;
         html += `<button onclick="switchProfile('${prof.id}')" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:0.5px solid ${a ? prof.color : 'var(--color-border-tertiary)'};background:${a ? prof.bg : 'transparent'};cursor:pointer;font-size:13px;font-weight:500;color:${a ? prof.color : 'var(--color-text-secondary)'}"><span style="width:22px;height:22px;border-radius:50%;background:${prof.color};display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:${prof.bg};font-weight:500">${prof.initials}</span>${prof.name}</button>`;
       }
-      html += `<button onclick="toggleDark()" style="margin-left:auto;padding:5px 12px;border-radius:20px;border:0.5px solid var(--color-border-secondary);font-size:12px;color:var(--color-text-secondary);background:var(--color-background-secondary)">${darkMode ? 'Light' : 'Dark'}</button></div><div id="sync-bar" class="sync-bar" style="display:none"></div>`;
+      html += `</div><div id="sync-bar" class="sync-bar" style="display:none"></div>`;
       if (view === 'confirm') { html += renderConfirm(); app.innerHTML = html; return; }
       html += `<div class="nav"><button class="${view === 'log' ? 'active' : ''}" onclick="setView('log')">Log</button><button class="${view === 'history' ? 'active' : ''}" onclick="setView('history')">History</button><button class="${view === 'progress' ? 'active' : ''}" onclick="setView('progress')">Progress</button><button class="${view === 'settings' ? 'active' : ''}" onclick="setView('settings')">Settings</button><button class="${view === 'adduser' ? 'active' : ''}" onclick="setView('adduser')">Add User</button></div>`;
       if (view === 'log') html += renderLog(p);
@@ -648,17 +670,16 @@
       }
       html += `</div>`;
 
-      // Edit name/colour (custom profiles only)
-      if (p.custom) {
-        const currentColorIdx = PRESET_COLORS.findIndex(c => c.color === p.color);
-        const editColorIdx = currentColorIdx >= 0 ? currentColorIdx : selectedColorIdx;
-        html += `<div class="sec-label">Edit profile</div>`;
-        html += `<div style="padding:12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary);margin-bottom:16px">`;
-        html += `<input id="edit-profile-name" type="text" value="${p.name}" placeholder="Name" style="margin-bottom:8px">`;
-        html += `<div style="display:flex;gap:8px;margin-bottom:10px">${PRESET_COLORS.map((c, i) => `<div id="cs-${i}" onclick="selectColor(${i})" style="width:28px;height:28px;border-radius:50%;background:${c.color};cursor:pointer;border:2px solid ${i === editColorIdx ? 'var(--color-text-primary)' : 'transparent'}"></div>`).join('')}</div>`;
-        html += `<button onclick="saveProfileEdit('${p.id}')">Save changes</button>`;
-        html += `</div>`;
-      }
+      // Edit profile colour (all profiles) and name (custom only)
+      const currentColorIdx = PRESET_COLORS.findIndex(c => c.color === p.color);
+      if (currentColorIdx >= 0) selectedColorIdx = currentColorIdx;
+      const editColorIdx = currentColorIdx >= 0 ? currentColorIdx : selectedColorIdx;
+      html += `<div class="sec-label">Edit profile</div>`;
+      html += `<div style="padding:12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary);margin-bottom:16px">`;
+      if (p.custom) html += `<input id="edit-profile-name" type="text" value="${p.name}" placeholder="Name" style="margin-bottom:8px">`;
+      html += `<div style="display:flex;gap:8px;margin-bottom:10px">${PRESET_COLORS.map((c, i) => `<div id="cs-${i}" onclick="selectColor(${i})" style="width:28px;height:28px;border-radius:50%;background:${c.color};cursor:pointer;border:2px solid ${i === editColorIdx ? 'var(--color-text-primary)' : 'transparent'}"></div>`).join('')}</div>`;
+      html += `<button onclick="saveProfileEdit('${p.id}')">Save changes</button>`;
+      html += `</div>`;
 
       // Global: rename exercise
       html += `<div class="sec-label">Exercise names</div>`;
@@ -706,14 +727,18 @@
     function cancelConfirm() { view = pendingAction ? pendingAction.backView : 'log'; pendingAction = null; render(); }
 
     function saveProfileEdit(id) {
-      const nameEl = document.getElementById('edit-profile-name');
-      if (!nameEl || !nameEl.value.trim()) { alert('Enter a name.'); return; }
-      const name = nameEl.value.trim();
       const c = PRESET_COLORS[selectedColorIdx];
-      const p = customProfiles.find(p => p.id === id);
-      if (!p) return;
-      p.name = name; p.color = c.color; p.bg = c.bg; p.initials = name.slice(0, 2).toUpperCase();
-      PROFILES = [...BASE_PROFILES, ...customProfiles];
+      if (BASE_PROFILES.some(p => p.id === id)) {
+        baseProfileOverrides[id] = { color: c.color, bg: c.bg };
+      } else {
+        const nameEl = document.getElementById('edit-profile-name');
+        if (!nameEl || !nameEl.value.trim()) { alert('Enter a name.'); return; }
+        const name = nameEl.value.trim();
+        const p = customProfiles.find(p => p.id === id);
+        if (!p) return;
+        p.name = name; p.color = c.color; p.bg = c.bg; p.initials = name.slice(0, 2).toUpperCase();
+      }
+      buildProfiles();
       save(); render();
     }
 
@@ -724,7 +749,7 @@
       askConfirm(`Delete ${p.name} and all ${count} of their sessions? This cannot be undone.`, async () => {
         customProfiles = customProfiles.filter(cp => cp.id !== id);
         sessions = sessions.filter(s => s.profile !== id);
-        PROFILES = [...BASE_PROFILES, ...customProfiles];
+        buildProfiles();
         if (activeProfile === id) activeProfile = BASE_PROFILES[0].id;
         await save();
       }, 'settings');
@@ -855,11 +880,12 @@
           const remProf = rec.customProfiles || [];
           const remProfIds = new Set(remProf.map(p => p.id));
           customProfiles = [...remProf, ...customProfiles.filter(p => !remProfIds.has(p.id))];
-          PROFILES = [...BASE_PROFILES, ...customProfiles];
+          baseProfileOverrides = { ...(rec.baseProfileOverrides || {}), ...baseProfileOverrides };
+          buildProfiles();
           migrateNames();
           saveLocal();
         }
-        await putBin({ sessions, customExercises, customProfiles });
+        await putBin({ sessions, customExercises, customProfiles, baseProfileOverrides });
         showSync('synced', 'Back online — synced');
         render();
       } catch {
