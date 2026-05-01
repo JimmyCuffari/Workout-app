@@ -460,8 +460,11 @@
           const merged = rec.sessions.map(rs => { const ls = localSnap.find(s => s.id === rs.id); return (ls && ls.exercises.length > rs.exercises.length) ? ls : rs; });
           const remoteIds = new Set(rec.sessions.map(s => s.id));
           sessions = [...merged, ...localSnap.filter(s => !remoteIds.has(s.id))];
-          customExercises = rec.customExercises || [];
-          customProfiles = rec.customProfiles || [];
+          const remEx = rec.customExercises || [];
+          customExercises = [...new Set([...remEx, ...customExercises])];
+          const remProf = rec.customProfiles || [];
+          const remProfIds = new Set(remProf.map(p => p.id));
+          customProfiles = [...remProf, ...customProfiles.filter(p => !remProfIds.has(p.id))];
           PROFILES = [...BASE_PROFILES, ...customProfiles];
           saveLocal();
         } else if (!local) {
@@ -847,6 +850,12 @@
           const merged = rec.sessions.map(rs => { const ls = localSnap.find(s => s.id === rs.id); return (ls && ls.exercises.length > rs.exercises.length) ? ls : rs; });
           const remoteIds = new Set(rec.sessions.map(s => s.id));
           sessions = [...merged, ...localSnap.filter(s => !remoteIds.has(s.id))];
+          const remEx = rec.customExercises || [];
+          customExercises = [...new Set([...remEx, ...customExercises])];
+          const remProf = rec.customProfiles || [];
+          const remProfIds = new Set(remProf.map(p => p.id));
+          customProfiles = [...remProf, ...customProfiles.filter(p => !remProfIds.has(p.id))];
+          PROFILES = [...BASE_PROFILES, ...customProfiles];
           migrateNames();
           saveLocal();
         }
