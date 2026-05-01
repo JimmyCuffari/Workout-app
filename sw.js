@@ -18,8 +18,8 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Let JSONBin calls go straight to the network — never cache API responses
-  if (e.request.url.includes('jsonbin.io')) return;
+  // Let Supabase calls go straight to the network — never cache API responses
+  if (e.request.url.includes('supabase.co')) return;
 
   e.respondWith(
     caches.match(e.request).then(cached => {
