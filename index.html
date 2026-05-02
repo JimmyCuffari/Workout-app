@@ -387,30 +387,43 @@
     function bestEst1RM(name) { let best = 0; for (const s of profileSessions()) { const ex = s.exercises.find(e => e.name === name); if (!ex) continue; for (const x of ex.sets) { const e = calcEst1RM(parseFloat(x.weight) || 0, parseFloat(x.reps) || 0); if (e > best) best = e; } } return best; }
     function weeklySets() { const cut = Date.now() - 7 * 24 * 60 * 60 * 1000; const map = {}; for (const s of profileSessions()) { if (s.date < cut) continue; for (const e of s.exercises) { for (const m of (MUSCLE_MAP[e.name] || [])) map[m] = (map[m] || 0) + e.sets.filter(x => x.weight || x.reps).length; } } return map; }
     function toggleExpandEx(name) { expandedExercise = expandedExercise === name ? null : name; render(); }
-    function exerciseChartSVG(name, color) {
+    function exerciseChartHTML(name, color) {
       const pts = [];
       for (const s of [...profileSessions()].reverse()) {
         const ex = s.exercises.find(e => e.name === name);
         if (!ex) continue;
         const isBW = ex.bodyweight || ex.sets.every(x => !x.weight);
-        const val = isBW ? Math.max(0, ...ex.sets.map(x => parseFloat(x.reps) || 0)) : Math.max(0, ...ex.sets.map(x => parseFloat(x.weight) || 0));
+        let val;
+        if (isBW) {
+          val = Math.max(0, ...ex.sets.map(x => parseFloat(x.reps) || 0));
+        } else if (chartMode === 'e1rm') {
+          val = Math.max(0, ...ex.sets.map(x => calcEst1RM(parseFloat(x.weight) || 0, parseFloat(x.reps) || 0)));
+        } else {
+          val = Math.max(0, ...ex.sets.map(x => parseFloat(x.weight) || 0));
+        }
         if (val > 0) pts.push({ date: s.date, val, isBW });
       }
-      if (pts.length < 2) return `<div style="font-size:12px;color:var(--color-text-secondary);padding:6px 0;text-align:center">Need at least 2 sessions to show a chart.</div>`;
+      const isBW = pts[0]?.isBW;
+      const toggles = isBW ? '' : `<div style="display:flex;gap:4px;margin-top:10px" onclick="event.stopPropagation()">
+        <button class="btn-sm${chartMode === 'max' ? ' btn-primary' : ''}" onclick="chartMode='max';render()" style="font-size:11px;padding:3px 8px">Max weight</button>
+        <button class="btn-sm${chartMode === 'e1rm' ? ' btn-primary' : ''}" onclick="chartMode='e1rm';render()" style="font-size:11px;padding:3px 8px">Est. 1RM</button>
+      </div>`;
+      if (pts.length < 2) return toggles + `<div style="font-size:12px;color:var(--color-text-secondary);padding:6px 0;text-align:center">Need at least 2 sessions to show a chart.</div>`;
       const W = 300, H = 80, PX = 6, PY = 14;
       const minV = Math.min(...pts.map(p => p.val)), maxV = Math.max(...pts.map(p => p.val));
       const minD = pts[0].date, maxD = pts[pts.length - 1].date;
       const xf = d => PX + ((d - minD) / (maxD - minD || 1)) * (W - 2 * PX);
       const yf = v => H - PY - ((v - minV) / (maxV - minV || 1)) * (H - 2 * PY);
       const poly = pts.map(p => `${xf(p.date).toFixed(1)},${yf(p.val).toFixed(1)}`).join(' ');
-      const unit = pts[0].isBW ? 'r' : '';
+      const unit = isBW ? 'r' : (chartMode === 'e1rm' ? ' e1rm' : ' lbs');
       const first = pts[0], last = pts[pts.length - 1];
-      return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;overflow:visible;margin-top:8px">
+      const svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;overflow:visible;margin-top:8px">
         <polyline points="${poly}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="0.9"/>
         ${pts.map(p => `<circle cx="${xf(p.date).toFixed(1)}" cy="${yf(p.val).toFixed(1)}" r="3" fill="${color}"/>`).join('')}
         <text x="${xf(first.date).toFixed(1)}" y="${(yf(first.val) - 5).toFixed(1)}" text-anchor="start" font-size="9" fill="var(--color-text-tertiary)">${first.val}${unit}</text>
         <text x="${xf(last.date).toFixed(1)}" y="${(yf(last.val) - 5).toFixed(1)}" text-anchor="end" font-size="9" fill="${color}" font-weight="600">${last.val}${unit}</text>
       </svg>`;
+      return toggles + svg;
     }
     const BASE_PROFILES = [{ id: 'jimmy', name: 'Jimmy', color: '#534AB7', bg: '#EEEDFE', initials: 'JI' }, { id: 'alan', name: 'Alan', color: '#B74A4A', bg: '#E1F5EE', initials: 'AL' }];
     let baseProfileOverrides = {};
@@ -419,7 +432,7 @@
     const PRESET_COLORS = [{ color: '#B33A3A', bg: '#FCEBEB' }, { color: '#A0520F', bg: '#FEF2E0' }, { color: '#7B6500', bg: '#FDF5C0' }, { color: '#1A7A3A', bg: '#E0F5E8' }, { color: '#0F6688', bg: '#E0F2F8' }, { color: '#6B3BA3', bg: '#F2EBFE' }];
     let selectedColorIdx = 0;
 
-    let sessions = [], customExercises = {}, customProfiles = [], activeProfile = localStorage.getItem('wt-profile') || 'jimmy', view = 'log', draft = null, editing = false, pendingAction = null, progressMode = 'progress', timerEnd = null, timerInterval = null, timerDuration = 90, expandedExercise = null;
+    let sessions = [], customExercises = {}, customProfiles = [], activeProfile = localStorage.getItem('wt-profile') || 'jimmy', view = 'log', draft = null, editing = false, pendingAction = null, progressMode = 'progress', timerEnd = null, timerInterval = null, timerDuration = 90, expandedExercise = null, chartMode = 'max';
     function startTimer(secs) { timerDuration = secs; if (timerInterval) clearInterval(timerInterval); timerEnd = Date.now() + secs * 1000; tickTimer(); timerInterval = setInterval(tickTimer, 1000); }
     function stopTimer() { if (timerInterval) clearInterval(timerInterval); timerInterval = null; timerEnd = null; const el = document.getElementById('timer-bar'); if (el) el.style.display = 'none'; }
     function tickTimer() {
@@ -745,7 +758,7 @@
               <div><div style="font-size:14px;font-weight:500;margin-bottom:2px">${name}</div><div style="font-size:12px;color:var(--color-text-secondary)">${fmt(d.date)}</div></div>
               <div style="text-align:right"><div style="font-size:13px;font-weight:500;color:${p.color}">${setStr}</div>${e1rm ? `<div style="font-size:11px;color:var(--color-text-secondary)">Est. 1RM: ${e1rm} lbs</div>` : ''}</div>
             </div>
-            ${expanded ? exerciseChartSVG(name, p.color) : ''}
+            ${expanded ? exerciseChartHTML(name, p.color) : ''}
           </div>`;
         }
         return html;
@@ -809,7 +822,7 @@
         const bg = pct > 0 ? '#E1F5EE' : pct < 0 ? '#FCEBEB' : '#F1EFE8';
         const unit = d.bw ? 'reps' : 'lbs';
         const expanded = expandedExercise === name;
-        html += `<div onclick="toggleExpandEx('${name}')" style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid ${expanded ? p.color : 'var(--color-border-tertiary)'};cursor:pointer"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:14px;font-weight:500">${name}</span><span class="badge" style="background:${bg};color:${col}">${pct > 0 ? '+' : ''}${pct}%</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px"><span>Start: ${d.first} ${unit}</span><span>Now: ${d.last} ${unit}</span><span>Peak: ${d.peak} ${unit}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${barW}%;background:${p.color}"></div></div>${expanded ? exerciseChartSVG(name, p.color) : ''}</div>`;
+        html += `<div onclick="toggleExpandEx('${name}')" style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid ${expanded ? p.color : 'var(--color-border-tertiary)'};cursor:pointer"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:14px;font-weight:500">${name}</span><span class="badge" style="background:${bg};color:${col}">${pct > 0 ? '+' : ''}${pct}%</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px"><span>Start: ${d.first} ${unit}</span><span>Now: ${d.last} ${unit}</span><span>Peak: ${d.peak} ${unit}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${barW}%;background:${p.color}"></div></div>${expanded ? exerciseChartHTML(name, p.color) : ''}</div>`;
       }
       return html;
     }
