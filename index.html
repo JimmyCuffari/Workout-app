@@ -771,8 +771,12 @@
             const mx = Math.max(0, ...e.sets.map(x => parseFloat(x.weight) || 0));
             const mr = Math.max(0, ...e.sets.map(x => parseFloat(x.reps) || 0));
             const isBW = e.bodyweight || mx === 0;
-            if (isBW) { if (!best[e.name] || mr > best[e.name].reps) best[e.name] = { bw: true, reps: mr }; }
-            else { if (!best[e.name] || mx > best[e.name].weight) best[e.name] = { bw: false, weight: mx }; }
+            if (isBW) {
+              if (!best[e.name] || mr > best[e.name].reps) best[e.name] = { bw: true, reps: mr };
+            } else {
+              const e1rm = Math.max(0, ...e.sets.map(x => calcEst1RM(parseFloat(x.weight) || 0, parseFloat(x.reps) || 0)));
+              if (!best[e.name] || e1rm > best[e.name].e1rm) best[e.name] = { bw: false, e1rm };
+            }
           }
         }
         const presets = [
@@ -785,12 +789,12 @@
         let html = toggle;
         for (const [name, d] of entries) {
           html += `<div style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)">`;
-          html += `<div style="font-size:14px;font-weight:500;margin-bottom:8px">${name}</div>`;
+          html += `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div style="font-size:14px;font-weight:500">${name}</div>${d.e1rm ? `<div style="font-size:11px;color:var(--color-text-secondary)">Est. 1RM: ${d.e1rm} lbs</div>` : ''}</div>`;
           if (d.bw) {
             html += `<div style="font-size:12px;color:var(--color-text-secondary)">Best: BW × ${d.reps} reps — aim to add reps each session</div>`;
           } else {
             for (const pr of presets) {
-              const w = Math.round(d.weight * pr.pct / 2.5) * 2.5;
+              const w = Math.round(d.e1rm * pr.pct / 2.5) * 2.5;
               html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:0.5px solid var(--color-border-tertiary)"><span class="badge" style="background:${pr.bg};color:${pr.col}">${pr.label}</span><span style="font-size:12px;color:var(--color-text-secondary)">${pr.sets} sets × ${pr.reps} reps</span><span style="font-size:13px;font-weight:500">${w} lbs <span style="font-size:11px;font-weight:400;color:var(--color-text-secondary)">(${Math.round(pr.pct * 100)}%)</span></span></div>`;
             }
           }
