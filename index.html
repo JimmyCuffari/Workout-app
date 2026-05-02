@@ -460,10 +460,16 @@
 
     const SB_HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` };
     async function fetchBin() {
-      const r = await fetch(`${SB_URL}/rest/v1/workout_data?select=data&id=eq.1`, { headers: SB_HEADERS });
-      if (!r.ok) throw new Error('fetch failed');
-      const rows = await r.json();
-      return rows[0]?.data || null;
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const r = await fetch(`${SB_URL}/rest/v1/workout_data?select=data&id=eq.1`, { headers: SB_HEADERS, signal: ctrl.signal });
+        if (!r.ok) throw new Error('fetch failed');
+        const rows = await r.json();
+        return rows[0]?.data || null;
+      } finally {
+        clearTimeout(t);
+      }
     }
     async function putBin(data) {
       const r = await fetch(`${SB_URL}/rest/v1/workout_data`, {
@@ -521,10 +527,9 @@
         if (!local) {
           sessions = [...SEED];
           migrateNames();
-          showSync('offline', 'Offline — showing sample data');
-        } else {
-          showSync('offline', 'Offline — showing last saved data');
         }
+        render();
+        showSync('offline', local ? 'Offline — showing last saved data' : 'Could not reach server — showing sample data');
       }
     }
 
@@ -549,7 +554,7 @@
 
     function render() {
       const p = profile();
-      document.getElementById('theme-meta').content = p.color;
+      const themeMeta = document.getElementById('theme-meta'); if (themeMeta) themeMeta.content = p.color;
       const app = document.getElementById('app');
       let html = '';
       html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:0.5px solid var(--color-border-tertiary)">`;
