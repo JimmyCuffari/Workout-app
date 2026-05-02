@@ -668,9 +668,10 @@
       const ss = profileSessions();
       if (!ss.length) return `<div class="empty">Log sessions to see progress.</div>`;
 
-      const toggle = `<div style="display:flex;gap:6px;margin-bottom:16px">
+      const toggle = `<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
         <button class="${progressMode === 'progress' ? 'btn-primary' : ''} btn-sm" onclick="progressMode='progress';render()">Progress</button>
         <button class="${progressMode === 'best' ? 'btn-primary' : ''} btn-sm" onclick="progressMode='best';render()">Personal bests</button>
+        <button class="${progressMode === 'guide' ? 'btn-primary' : ''} btn-sm" onclick="progressMode='guide';render()">Guide</button>
       </div>`;
 
       if (progressMode === 'best') {
@@ -701,6 +702,41 @@
         return html;
       }
 
+      if (progressMode === 'guide') {
+        const best = {};
+        for (const s of ss) {
+          for (const e of s.exercises) {
+            const mx = Math.max(0, ...e.sets.map(x => parseFloat(x.weight) || 0));
+            const mr = Math.max(0, ...e.sets.map(x => parseFloat(x.reps) || 0));
+            const isBW = e.bodyweight || mx === 0;
+            if (isBW) { if (!best[e.name] || mr > best[e.name].reps) best[e.name] = { bw: true, reps: mr }; }
+            else { if (!best[e.name] || mx > best[e.name].weight) best[e.name] = { bw: false, weight: mx }; }
+          }
+        }
+        const presets = [
+          { label: 'Strength',    pct: 0.85, reps: '3–5',   sets: 4, col: '#1A5E9E', bg: '#EBF3FF' },
+          { label: 'Hypertrophy', pct: 0.70, reps: '8–12',  sets: 3, col: '#6B3BA3', bg: '#F2EBFE' },
+          { label: 'Endurance',   pct: 0.60, reps: '15–20', sets: 3, col: '#1A7A3A', bg: '#E1F5EE' },
+        ];
+        const entries = Object.entries(best).sort((a, b) => a[0].localeCompare(b[0]));
+        if (!entries.length) return toggle + `<div class="empty">No history to base recommendations on.</div>`;
+        let html = toggle;
+        for (const [name, d] of entries) {
+          html += `<div style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)">`;
+          html += `<div style="font-size:14px;font-weight:500;margin-bottom:8px">${name}</div>`;
+          if (d.bw) {
+            html += `<div style="font-size:12px;color:var(--color-text-secondary)">Best: BW × ${d.reps} reps — aim to add reps each session</div>`;
+          } else {
+            for (const pr of presets) {
+              const w = Math.round(d.weight * pr.pct / 2.5) * 2.5;
+              html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:0.5px solid var(--color-border-tertiary)"><span class="badge" style="background:${pr.bg};color:${pr.col}">${pr.label}</span><span style="font-size:12px;color:var(--color-text-secondary)">${pr.sets} sets × ${pr.reps} reps</span><span style="font-size:13px;font-weight:500">${w} lbs <span style="font-size:11px;font-weight:400;color:var(--color-text-secondary)">(${Math.round(pr.pct*100)}%)</span></span></div>`;
+            }
+          }
+          html += `</div>`;
+        }
+        return html;
+      }
+
       const map = {};
       for (const s of [...ss].reverse()) {
         for (const e of s.exercises) {
@@ -714,11 +750,7 @@
           map[e.name].count++;
         }
       }
-      const entries = Object.entries(map).sort((a, b) => {
-        const pa = a[1].first > 0 ? (a[1].last - a[1].first) / a[1].first : 0;
-        const pb = b[1].first > 0 ? (b[1].last - b[1].first) / b[1].first : 0;
-        return pb - pa;
-      });
+      const entries = Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
       if (!entries.length) return toggle + `<div class="empty">Add weights to sets to track progress.</div>`;
       let html = toggle + `<div class="sec-label">Strength progress</div>`;
       for (const [name, d] of entries) {
