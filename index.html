@@ -386,7 +386,7 @@
     const PRESET_COLORS = [{ color: '#B33A3A', bg: '#FCEBEB' }, { color: '#A0520F', bg: '#FEF2E0' }, { color: '#7B6500', bg: '#FDF5C0' }, { color: '#1A7A3A', bg: '#E0F5E8' }, { color: '#0F6688', bg: '#E0F2F8' }, { color: '#6B3BA3', bg: '#F2EBFE' }];
     let selectedColorIdx = 0;
 
-    let sessions = [], customExercises = {}, customProfiles = [], activeProfile = localStorage.getItem('wt-profile') || 'jimmy', view = 'log', draft = null, editing = false, pendingAction = null;
+    let sessions = [], customExercises = {}, customProfiles = [], activeProfile = localStorage.getItem('wt-profile') || 'jimmy', view = 'log', draft = null, editing = false, pendingAction = null, progressMode = 'progress';
     function migrateCustomEx(val) { if (Array.isArray(val)) { const o = {}; for (const p of PROFILES) { o[p.id] = [...val]; } return o; } return val || {}; }
     function mergeCustomEx(a, b) { const m = { ...a }; for (const [pid, list] of Object.entries(b)) m[pid] = [...new Set([...(list || []), ...(m[pid] || [])])]; return m; }
     let darkMode = localStorage.getItem('wt-dark') === '1';
@@ -636,13 +636,50 @@
     function renderProgress(p) {
       const ss = profileSessions();
       if (!ss.length) return `<div class="empty">Log sessions to see progress.</div>`;
+
+      const toggle = `<div style="display:flex;gap:6px;margin-bottom:16px">
+        <button class="${progressMode === 'progress' ? 'btn-primary' : ''} btn-sm" onclick="progressMode='progress';render()">Progress</button>
+        <button class="${progressMode === 'best' ? 'btn-primary' : ''} btn-sm" onclick="progressMode='best';render()">Personal bests</button>
+      </div>`;
+
+      if (progressMode === 'best') {
+        const best = {};
+        for (const s of ss) {
+          for (const e of s.exercises) {
+            const isBW = e.bodyweight || e.sets.every(x => !x.weight);
+            for (const x of e.sets) {
+              const w = parseFloat(x.weight) || 0;
+              const r = parseFloat(x.reps) || 0;
+              if (!r) continue;
+              const cur = best[e.name];
+              if (!cur || w > cur.weight || (w === cur.weight && r > cur.reps))
+                best[e.name] = { weight: w, reps: r, date: s.date, bw: isBW };
+            }
+          }
+        }
+        const entries = Object.entries(best).sort((a, b) => a[0].localeCompare(b[0]));
+        if (!entries.length) return toggle + `<div class="empty">No sets logged yet.</div>`;
+        let html = toggle;
+        for (const [name, d] of entries) {
+          const setStr = d.bw ? `BW × ${d.reps} reps` : `${d.weight} lbs × ${d.reps} reps`;
+          html += `<div style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary);display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-size:14px;font-weight:500;margin-bottom:2px">${name}</div><div style="font-size:12px;color:var(--color-text-secondary)">${fmt(d.date)}</div></div>
+            <div style="font-size:13px;font-weight:500;color:${p.color}">${setStr}</div>
+          </div>`;
+        }
+        return html;
+      }
+
       const map = {};
       for (const s of [...ss].reverse()) {
         for (const e of s.exercises) {
           const mx = Math.max(0, ...e.sets.map(x => parseFloat(x.weight) || 0));
-          if (!mx) continue;
-          if (!map[e.name]) map[e.name] = { first: mx, last: mx, peak: mx, count: 0 };
-          else { map[e.name].last = mx; if (mx > map[e.name].peak) map[e.name].peak = mx; }
+          const mr = Math.max(0, ...e.sets.map(x => parseFloat(x.reps) || 0));
+          const isBW = e.bodyweight || mx === 0;
+          const val = isBW ? mr : mx;
+          if (!val) continue;
+          if (!map[e.name]) map[e.name] = { first: val, last: val, peak: val, count: 0, bw: isBW };
+          else { map[e.name].last = val; if (val > map[e.name].peak) map[e.name].peak = val; }
           map[e.name].count++;
         }
       }
@@ -651,14 +688,15 @@
         const pb = b[1].first > 0 ? (b[1].last - b[1].first) / b[1].first : 0;
         return pb - pa;
       });
-      if (!entries.length) return `<div class="empty">Add weights to sets to track progress.</div>`;
-      let html = `<div class="sec-label">Strength progress — max weight</div>`;
+      if (!entries.length) return toggle + `<div class="empty">Add weights to sets to track progress.</div>`;
+      let html = toggle + `<div class="sec-label">Strength progress</div>`;
       for (const [name, d] of entries) {
         const pct = d.first > 0 ? Math.round(((d.last - d.first) / d.first) * 100) : 0;
-        const bw = d.peak > 0 ? Math.round((d.last / d.peak) * 100) : 100;
+        const barW = d.peak > 0 ? Math.round((d.last / d.peak) * 100) : 100;
         const col = pct > 0 ? '#0F6E56' : pct < 0 ? '#A32D2D' : '#5F5E5A';
         const bg = pct > 0 ? '#E1F5EE' : pct < 0 ? '#FCEBEB' : '#F1EFE8';
-        html += `<div style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:14px;font-weight:500">${name}</span><span class="badge" style="background:${bg};color:${col}">${pct > 0 ? '+' : ''}${pct}%</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px"><span>Start: ${d.first} lbs</span><span>Now: ${d.last} lbs</span><span>Peak: ${d.peak} lbs</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${bw}%;background:${p.color}"></div></div></div>`;
+        const unit = d.bw ? 'reps' : 'lbs';
+        html += `<div style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:14px;font-weight:500">${name}</span><span class="badge" style="background:${bg};color:${col}">${pct > 0 ? '+' : ''}${pct}%</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px"><span>Start: ${d.first} ${unit}</span><span>Now: ${d.last} ${unit}</span><span>Peak: ${d.peak} ${unit}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${barW}%;background:${p.color}"></div></div></div>`;
       }
       return html;
     }
