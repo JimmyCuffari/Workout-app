@@ -432,7 +432,7 @@
     const PRESET_COLORS = [{ color: '#B33A3A', bg: '#FCEBEB' }, { color: '#A0520F', bg: '#FEF2E0' }, { color: '#7B6500', bg: '#FDF5C0' }, { color: '#1A7A3A', bg: '#E0F5E8' }, { color: '#0F6688', bg: '#E0F2F8' }, { color: '#6B3BA3', bg: '#F2EBFE' }];
     let selectedColorIdx = 0;
 
-    let sessions = [], customExercises = {}, customProfiles = [], activeProfile = localStorage.getItem('wt-profile') || 'jimmy', view = 'log', draft = null, editing = false, pendingAction = null, progressMode = 'progress', timerEnd = null, timerInterval = null, timerDuration = 90, expandedExercise = null, chartMode = 'max';
+    let sessions = [], customExercises = {}, customProfiles = [], activeProfile = localStorage.getItem('wt-profile') || 'jimmy', view = 'log', draft = null, editing = false, pendingAction = null, progressMode = 'progress', timerEnd = null, timerInterval = null, timerDuration = 90, expandedExercise = null, chartMode = 'max', guideBase = 'e1rm';
     function startTimer(secs) { timerDuration = secs; if (timerInterval) clearInterval(timerInterval); timerEnd = Date.now() + secs * 1000; tickTimer(); timerInterval = setInterval(tickTimer, 1000); }
     function stopTimer() { if (timerInterval) clearInterval(timerInterval); timerInterval = null; timerEnd = null; const el = document.getElementById('timer-bar'); if (el) el.style.display = 'none'; }
     function tickTimer() {
@@ -777,6 +777,10 @@
       }
 
       if (progressMode === 'guide') {
+        const guideToggle = `<div style="display:flex;gap:4px;margin-bottom:12px" onclick="event.stopPropagation()">
+          <button class="btn-sm${guideBase === 'e1rm' ? ' btn-primary' : ''}" onclick="guideBase='e1rm';render()" style="font-size:11px">Est. 1RM</button>
+          <button class="btn-sm${guideBase === 'max' ? ' btn-primary' : ''}" onclick="guideBase='max';render()" style="font-size:11px">Actual max</button>
+        </div>`;
         const best = {};
         for (const s of ss) {
           for (const e of s.exercises) {
@@ -785,9 +789,11 @@
             const isBW = e.bodyweight || mx === 0;
             if (isBW) {
               if (!best[e.name] || mr > best[e.name].reps) best[e.name] = { bw: true, reps: mr };
-            } else {
+            } else if (guideBase === 'e1rm') {
               const e1rm = Math.max(0, ...e.sets.map(x => calcEst1RM(parseFloat(x.weight) || 0, parseFloat(x.reps) || 0)));
-              if (!best[e.name] || e1rm > best[e.name].e1rm) best[e.name] = { bw: false, e1rm };
+              if (e1rm && (!best[e.name] || e1rm > best[e.name].base)) best[e.name] = { bw: false, base: e1rm, label: `Est. 1RM: ${e1rm} lbs` };
+            } else {
+              if (mx && (!best[e.name] || mx > best[e.name].base)) best[e.name] = { bw: false, base: mx, label: `Max: ${mx} lbs` };
             }
           }
         }
@@ -797,16 +803,16 @@
           { label: 'Endurance', pct: 0.60, reps: '15–20', sets: 3, col: '#1A7A3A', bg: '#E1F5EE' },
         ];
         const entries = Object.entries(best).sort((a, b) => a[0].localeCompare(b[0]));
-        if (!entries.length) return toggle + `<div class="empty">No history to base recommendations on.</div>`;
-        let html = toggle;
+        if (!entries.length) return toggle + guideToggle + `<div class="empty">No history to base recommendations on.</div>`;
+        let html = toggle + guideToggle;
         for (const [name, d] of entries) {
           html += `<div style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)">`;
-          html += `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div style="font-size:14px;font-weight:500">${name}</div>${d.e1rm ? `<div style="font-size:11px;color:var(--color-text-secondary)">Est. 1RM: ${d.e1rm} lbs</div>` : ''}</div>`;
+          html += `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div style="font-size:14px;font-weight:500">${name}</div><div style="font-size:11px;color:var(--color-text-secondary)">${d.label || ''}</div></div>`;
           if (d.bw) {
             html += `<div style="font-size:12px;color:var(--color-text-secondary)">Best: BW × ${d.reps} reps — aim to add reps each session</div>`;
           } else {
             for (const pr of presets) {
-              const w = Math.round(d.e1rm * pr.pct / 2.5) * 2.5;
+              const w = Math.round(d.base * pr.pct / 2.5) * 2.5;
               html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:0.5px solid var(--color-border-tertiary)"><span class="badge" style="background:${pr.bg};color:${pr.col}">${pr.label}</span><span style="font-size:12px;color:var(--color-text-secondary)">${pr.sets} sets × ${pr.reps} reps</span><span style="font-size:13px;font-weight:500">${w} lbs <span style="font-size:11px;font-weight:400;color:var(--color-text-secondary)">(${Math.round(pr.pct * 100)}%)</span></span></div>`;
             }
           }
