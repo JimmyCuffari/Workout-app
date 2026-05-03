@@ -782,6 +782,7 @@
         </div>`;
         const best = {};
         for (const s of ss) {
+          if (draft && s.id === draft.id) continue;
           for (const e of s.exercises) {
             const mx = Math.max(0, ...e.sets.map(x => parseFloat(x.weight) || 0));
             const mr = Math.max(0, ...e.sets.map(x => parseFloat(x.reps) || 0));
