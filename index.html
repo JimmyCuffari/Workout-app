@@ -425,6 +425,13 @@
       </svg>`;
       return toggles + svg;
     }
+    const INTENSITY_LEVELS = [
+      { key: 'light', label: 'Light', pct: 0.50, bg: '#E0F2F8', color: '#0F6688' },
+      { key: 'mod-light', label: 'Mod-Light', pct: 0.60, bg: '#E1F5EE', color: '#1A7A3A' },
+      { key: 'moderate', label: 'Moderate', pct: 0.70, bg: '#F2EBFE', color: '#6B3BA3' },
+      { key: 'mod-heavy', label: 'Mod-Heavy', pct: 0.80, bg: '#FEF2E0', color: '#A0520F' },
+      { key: 'heavy', label: 'Heavy', pct: 0.875, bg: '#FCEBEB', color: '#A32D2D' },
+    ];
     const BASE_PROFILES = [{ id: 'jimmy', name: 'Jimmy', color: '#534AB7', bg: '#EEEDFE', initials: 'JI' }, { id: 'alan', name: 'Alan', color: '#B74A4A', bg: '#E1F5EE', initials: 'AL' }];
     let baseProfileOverrides = {};
     function buildProfiles() { PROFILES = [...BASE_PROFILES.map(p => ({ ...p, ...(baseProfileOverrides[p.id] || {}) })), ...customProfiles]; }
@@ -1147,7 +1154,7 @@
         }
         for (let i = 0; i < planEditDraft.exercises.length; i++) {
           const pe = planEditDraft.exercises[i];
-          html += `<div style="display:grid;grid-template-columns:1fr 52px 68px auto;gap:6px;align-items:center;margin-bottom:6px">`;
+          html += `<div style="display:grid;grid-template-columns:1fr 52px 68px auto;gap:6px;align-items:center;margin-bottom:4px">`;
           html += `<select onchange="planEditDraft.exercises[${i}].name=this.value"><option value="">Select...</option>`;
           for (const e of allEx()) html += `<option value="${e}"${pe.name === e ? ' selected' : ''}>${e}</option>`;
           html += `</select>`;
@@ -1155,8 +1162,14 @@
           html += `<input type="text" value="${pe.reps}" placeholder="e.g. 8–12" onchange="planEditDraft.exercises[${i}].reps=this.value" style="text-align:center;padding:7px 4px">`;
           html += `<button class="btn-sm btn-danger" onclick="planEditDraft.exercises.splice(${i},1);render()" style="padding:5px 8px">✕</button>`;
           html += `</div>`;
+          html += `<div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">`;
+          for (const lvl of INTENSITY_LEVELS) {
+            const active = pe.intensity === lvl.key;
+            html += `<button onclick="planEditDraft.exercises[${i}].intensity=planEditDraft.exercises[${i}].intensity==='${lvl.key}'?null:'${lvl.key}';render()" style="font-size:11px;padding:3px 10px;border-radius:20px;border:0.5px solid ${active ? lvl.color : 'var(--color-border-secondary)'};background:${active ? lvl.bg : 'transparent'};color:${active ? lvl.color : 'var(--color-text-secondary)'}">${lvl.label}</button>`;
+          }
+          html += `</div>`;
         }
-        html += `<button onclick="planEditDraft.exercises.push({name:'',sets:3,reps:'8–12'});render()" style="width:100%;margin-bottom:16px;font-size:12px;padding:7px;border-style:dashed">+ Add exercise</button>`;
+        html += `<button onclick="planEditDraft.exercises.push({name:'',sets:3,reps:'8–12',intensity:null});render()" style="width:100%;margin-bottom:16px;font-size:12px;padding:7px;border-style:dashed">+ Add exercise</button>`;
         html += `<button class="btn-primary" style="width:100%;padding:11px" onclick="savePlan()">Save plan</button>`;
         return html;
       }
@@ -1169,7 +1182,9 @@
         html += `<div style="margin-bottom:10px;padding:12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)">`;
         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:15px;font-weight:500">${pl.name}</div><div style="display:flex;gap:6px"><button class="btn-sm" onclick="editPlan('${pl.id}')">Edit</button><button class="btn-danger btn-sm" onclick="deletePlan('${pl.id}')">Delete</button></div></div>`;
         for (const pe of exList) {
-          html += `<div style="font-size:13px;display:flex;justify-content:space-between;padding:2px 0;border-top:0.5px solid var(--color-border-tertiary)"><span>${pe.name}</span><span class="muted">${pe.sets} × ${pe.reps}</span></div>`;
+          const intLvl = INTENSITY_LEVELS.find(l => l.key === pe.intensity);
+          const intBadge = intLvl ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${intLvl.bg};color:${intLvl.color};font-weight:500">${intLvl.label}</span>` : '';
+          html += `<div style="font-size:13px;display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:0.5px solid var(--color-border-tertiary)"><span>${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>`;
         }
         html += `<button class="btn-primary" style="width:100%;margin-top:10px;padding:9px;font-size:13px" onclick="startFromPlan('${pl.id}')">Start from this plan</button>`;
         html += `</div>`;
@@ -1177,7 +1192,7 @@
       return html;
     }
 
-    function newPlanDraft() { planEditDraft = { id: null, name: '', profile: activeProfile, exercises: [{ name: '', sets: 3, reps: '8–12' }] }; render(); }
+    function newPlanDraft() { planEditDraft = { id: null, name: '', profile: activeProfile, exercises: [{ name: '', sets: 3, reps: '8–12', intensity: null }] }; render(); }
 
     function editPlan(id) { const pl = plans.find(p => p.id === id); if (!pl) return; planEditDraft = structuredClone(pl); render(); }
 
@@ -1217,7 +1232,13 @@
       for (const pe of plan.exercises) {
         if (!pe.name) continue;
         if (!draft.exercises.find(e => e.name === pe.name)) {
-          draft.exercises.push({ name: pe.name, sets: Array.from({ length: pe.sets || 3 }, () => ({ weight: '', reps: '' })), note: '' });
+          let suggestedWeight = '';
+          if (pe.intensity) {
+            const lvl = INTENSITY_LEVELS.find(l => l.key === pe.intensity);
+            const best = maxWeight(pe.name);
+            if (lvl && best > 0) suggestedWeight = String(Math.round(best * lvl.pct / 2.5) * 2.5);
+          }
+          draft.exercises.push({ name: pe.name, sets: Array.from({ length: pe.sets || 3 }, () => ({ weight: suggestedWeight, reps: '' })), note: '' });
         }
       }
       editing = false;
