@@ -1189,12 +1189,43 @@
         html += `<button class="btn-primary" style="width:100%;margin-top:10px;padding:9px;font-size:13px" onclick="startFromPlan('${pl.id}')">Start from this plan</button>`;
         html += `</div>`;
       }
+
+      const otherPlans = plans.filter(pl => pl.profile !== activeProfile);
+      if (otherPlans.length) {
+        html += `<div class="sec-label" style="margin-top:8px">From other users</div>`;
+        for (const pl of otherPlans) {
+          const owner = PROFILES.find(pr => pr.id === pl.profile);
+          const exList = pl.exercises.filter(e => e.name);
+          html += `<div style="margin-bottom:10px;padding:12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)">`;
+          html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`;
+          html += `<div><div style="font-size:15px;font-weight:500">${pl.name}</div>${owner ? `<div style="font-size:11px;color:var(--color-text-secondary)">${owner.name}</div>` : ''}</div>`;
+          html += `<button class="btn-sm" onclick="copyPlan('${pl.id}')">Copy to my plans</button>`;
+          html += `</div>`;
+          for (const pe of exList) {
+            const intLvl = INTENSITY_LEVELS.find(l => l.key === pe.intensity);
+            const intBadge = intLvl ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${intLvl.bg};color:${intLvl.color};font-weight:500">${intLvl.label}</span>` : '';
+            html += `<div style="font-size:13px;display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:0.5px solid var(--color-border-tertiary)"><span>${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>`;
+          }
+          html += `</div>`;
+        }
+      }
+
       return html;
     }
 
     function newPlanDraft() { planEditDraft = { id: null, name: '', profile: activeProfile, exercises: [{ name: '', sets: 3, reps: '8–12', intensity: null }] }; render(); }
 
     function editPlan(id) { const pl = plans.find(p => p.id === id); if (!pl) return; planEditDraft = structuredClone(pl); render(); }
+
+    function copyPlan(id) {
+      const pl = plans.find(p => p.id === id);
+      if (!pl) return;
+      const copy = structuredClone(pl);
+      copy.id = 'plan_' + uid();
+      copy.profile = activeProfile;
+      plans.push(copy);
+      save(); render();
+    }
 
     function savePlan() {
       const nameEl = document.getElementById('plan-name');
