@@ -1148,7 +1148,7 @@
       if (planEditDraft) {
         const isNew = !planEditDraft.id;
         let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-size:16px;font-weight:500">${isNew ? 'New plan' : 'Edit plan'}</div><button class="btn-sm" onclick="planEditDraft=null;render()">Cancel</button></div>`;
-        html += `<input id="plan-name" type="text" placeholder="Plan name (e.g. Push Day)" value="${planEditDraft.name}" style="margin-bottom:12px">`;
+        html += `<input id="plan-name" type="text" placeholder="Plan name (e.g. Push Day)" value="${planEditDraft.name}" oninput="planEditDraft.name=this.value" style="margin-bottom:12px">`;
         if (planEditDraft.exercises.length) {
           html += `<div style="display:grid;grid-template-columns:1fr 52px 68px auto;gap:6px;margin-bottom:4px;font-size:11px;color:var(--color-text-secondary);padding:0 2px"><span>Exercise</span><span style="text-align:center">Sets</span><span style="text-align:center">Reps</span><span></span></div>`;
         }
