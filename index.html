@@ -432,7 +432,7 @@
     const PRESET_COLORS = [{ color: '#B33A3A', bg: '#FCEBEB' }, { color: '#A0520F', bg: '#FEF2E0' }, { color: '#7B6500', bg: '#FDF5C0' }, { color: '#1A7A3A', bg: '#E0F5E8' }, { color: '#0F6688', bg: '#E0F2F8' }, { color: '#6B3BA3', bg: '#F2EBFE' }];
     let selectedColorIdx = 0;
 
-    let sessions = [], customExercises = {}, customProfiles = [], activeProfile = localStorage.getItem('wt-profile') || 'jimmy', view = 'log', draft = null, editing = false, pendingAction = null, progressMode = 'progress', timerEnd = null, timerInterval = null, timerDuration = 90, expandedExercise = null, chartMode = 'max', guideBase = 'e1rm';
+    let sessions = [], customExercises = {}, customProfiles = [], plans = [], activeProfile = localStorage.getItem('wt-profile') || 'jimmy', view = 'log', draft = null, editing = false, pendingAction = null, planEditDraft = null, progressMode = 'progress', timerEnd = null, timerInterval = null, timerDuration = 90, expandedExercise = null, chartMode = 'max', guideBase = 'e1rm';
     function startTimer(secs) { timerDuration = secs; if (timerInterval) clearInterval(timerInterval); timerEnd = Date.now() + secs * 1000; tickTimer(); timerInterval = setInterval(tickTimer, 1000); }
     function stopTimer() { if (timerInterval) clearInterval(timerInterval); timerInterval = null; timerEnd = null; const el = document.getElementById('timer-bar'); if (el) el.style.display = 'none'; }
     function tickTimer() {
@@ -460,7 +460,7 @@
     const LS_KEY = 'wt-data-v1';
     function saveLocal() {
       try {
-        localStorage.setItem(LS_KEY, JSON.stringify({ sessions, customExercises, customProfiles, baseProfileOverrides }));
+        localStorage.setItem(LS_KEY, JSON.stringify({ sessions, customExercises, customProfiles, baseProfileOverrides, plans }));
       } catch (e) {
         console.warn('Could not write to localStorage:', e);
       }
@@ -540,6 +540,7 @@
         customExercises = migrateCustomEx(local.customExercises);
         customProfiles = local.customProfiles || [];
         baseProfileOverrides = local.baseProfileOverrides || {};
+        plans = local.plans || [];
         buildProfiles();
         migrateNames();
         render();
@@ -558,6 +559,9 @@
           const remProfIds = new Set(remProf.map(p => p.id));
           customProfiles = [...remProf, ...customProfiles.filter(p => !remProfIds.has(p.id))];
           baseProfileOverrides = { ...(rec.baseProfileOverrides || {}), ...baseProfileOverrides };
+          const remPlans = rec.plans || [];
+          const remPlanIds = new Set(remPlans.map(pl => pl.id));
+          plans = [...remPlans, ...plans.filter(pl => !remPlanIds.has(pl.id))];
           buildProfiles();
           saveLocal();
         } else if (!local) {
@@ -580,7 +584,7 @@
       saveLocal();
       showSync('syncing', 'Saving...');
       try {
-        await putBin({ sessions, customExercises, customProfiles, baseProfileOverrides });
+        await putBin({ sessions, customExercises, customProfiles, baseProfileOverrides, plans });
         showSync('synced', 'Synced — ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
       } catch {
         showSync('offline', 'Saved locally — will sync when back online');
@@ -623,10 +627,11 @@
       }
       html += `</div><div id="sync-bar" class="sync-bar" style="display:none"></div><div id="timer-bar" style="display:none"></div>`;
       if (view === 'confirm') { html += renderConfirm(); app.innerHTML = html; return; }
-      html += `<div class="nav"><button class="${view === 'log' ? 'active' : ''}" onclick="setView('log')">Log</button><button class="${view === 'history' ? 'active' : ''}" onclick="setView('history')">History</button><button class="${view === 'progress' ? 'active' : ''}" onclick="setView('progress')">Progress</button><button class="${view === 'settings' ? 'active' : ''}" onclick="setView('settings')">Settings</button><button class="${view === 'adduser' ? 'active' : ''}" onclick="setView('adduser')">Add User</button></div>`;
+      html += `<div class="nav"><button class="${view === 'log' ? 'active' : ''}" onclick="setView('log')">Log</button><button class="${view === 'history' ? 'active' : ''}" onclick="setView('history')">History</button><button class="${view === 'progress' ? 'active' : ''}" onclick="setView('progress')">Progress</button><button class="${view === 'plans' ? 'active' : ''}" onclick="setView('plans')">Plans</button><button class="${view === 'settings' ? 'active' : ''}" onclick="setView('settings')">Settings</button><button class="${view === 'adduser' ? 'active' : ''}" onclick="setView('adduser')">Add User</button></div>`;
       if (view === 'log') html += renderLog(p);
       else if (view === 'history') html += renderHistory();
       else if (view === 'progress') html += renderProgress(p);
+      else if (view === 'plans') html += renderPlans(p);
       else if (view === 'settings') html += renderSettings(p);
       else if (view === 'adduser') html += renderAddUser();
       app.innerHTML = html;
@@ -660,7 +665,17 @@
           html += `</div></div>`;
         }
         const todayExists = sessions.some(s => s.id === todaySessionId());
-        return html + `<button class="btn-primary" style="width:100%;padding:12px;font-size:15px" onclick="startSession()">${todayExists ? 'Resume today\'s session' : 'Start new session'}</button>`;
+        const myPlans = plans.filter(pl => pl.profile === activeProfile);
+        let footer = `<button class="btn-primary" style="width:100%;padding:12px;font-size:15px" onclick="startSession()">${todayExists ? 'Resume today\'s session' : 'Start new session'}</button>`;
+        if (!todayExists && myPlans.length) {
+          footer += `<div class="sec-label" style="margin-top:14px">Start from a plan</div><div style="display:flex;flex-direction:column;gap:6px">`;
+          for (const pl of myPlans) {
+            const exCount = pl.exercises.filter(e => e.name).length;
+            footer += `<button onclick="startFromPlan('${pl.id}')" style="width:100%;padding:9px;text-align:left;font-size:13px;display:flex;justify-content:space-between;align-items:center"><span>${pl.name}</span><span class="muted" style="font-size:12px">${exCount} exercise${exCount !== 1 ? 's' : ''}</span></button>`;
+          }
+          footer += `</div>`;
+        }
+        return html + footer;
       }
 
       const sessionDate = editing ? fmt(draft.date) : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
@@ -999,7 +1014,7 @@
       URL.revokeObjectURL(a.href);
     }
 
-    function switchProfile(id) { activeProfile = id; localStorage.setItem('wt-profile', id); draft = null; render(); }
+    function switchProfile(id) { activeProfile = id; localStorage.setItem('wt-profile', id); draft = null; planEditDraft = null; render(); }
     function setView(v) { view = v; render(); }
     function startSession() { const todayId = todaySessionId(); const existing = sessions.find(s => s.id === todayId); draft = existing ? structuredClone(existing) : { id: todayId, profile: activeProfile, date: Date.now(), exercises: [], note: '' }; editing = false; render(); }
     function cancelSession() { draft = null; editing = false; render(); }
@@ -1075,21 +1090,112 @@
           const remoteIds = new Set(rec.sessions.map(s => s.id));
           sessions = [...merged, ...localSnap.filter(s => !remoteIds.has(s.id))];
           customExercises = mergeCustomEx(customExercises, migrateCustomEx(rec.customExercises));
-          const remProf = rec.customProfiles || [];
-          const remProfIds = new Set(remProf.map(p => p.id));
-          customProfiles = [...remProf, ...customProfiles.filter(p => !remProfIds.has(p.id))];
+          const remProf2 = rec.customProfiles || [];
+          const remProfIds2 = new Set(remProf2.map(p => p.id));
+          customProfiles = [...remProf2, ...customProfiles.filter(p => !remProfIds2.has(p.id))];
           baseProfileOverrides = { ...(rec.baseProfileOverrides || {}), ...baseProfileOverrides };
+          const remPlans2 = rec.plans || [];
+          const remPlanIds2 = new Set(remPlans2.map(pl => pl.id));
+          plans = [...remPlans2, ...plans.filter(pl => !remPlanIds2.has(pl.id))];
           buildProfiles();
           migrateNames();
           saveLocal();
         }
-        await putBin({ sessions, customExercises, customProfiles, baseProfileOverrides });
+        await putBin({ sessions, customExercises, customProfiles, baseProfileOverrides, plans });
         showSync('synced', 'Back online — synced');
         render();
       } catch {
         showSync('error', 'Sync failed');
       }
     });
+
+    function renderPlans(p) {
+      if (planEditDraft) {
+        const isNew = !planEditDraft.id;
+        let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-size:16px;font-weight:500">${isNew ? 'New plan' : 'Edit plan'}</div><button class="btn-sm" onclick="planEditDraft=null;render()">Cancel</button></div>`;
+        html += `<input id="plan-name" type="text" placeholder="Plan name (e.g. Push Day)" value="${planEditDraft.name}" style="margin-bottom:12px">`;
+        if (planEditDraft.exercises.length) {
+          html += `<div style="display:grid;grid-template-columns:1fr 52px 68px auto;gap:6px;margin-bottom:4px;font-size:11px;color:var(--color-text-secondary);padding:0 2px"><span>Exercise</span><span style="text-align:center">Sets</span><span style="text-align:center">Reps</span><span></span></div>`;
+        }
+        for (let i = 0; i < planEditDraft.exercises.length; i++) {
+          const pe = planEditDraft.exercises[i];
+          html += `<div style="display:grid;grid-template-columns:1fr 52px 68px auto;gap:6px;align-items:center;margin-bottom:6px">`;
+          html += `<select onchange="planEditDraft.exercises[${i}].name=this.value"><option value="">Select...</option>`;
+          for (const e of allEx()) html += `<option value="${e}"${pe.name === e ? ' selected' : ''}>${e}</option>`;
+          html += `</select>`;
+          html += `<input type="number" value="${pe.sets}" min="1" max="20" placeholder="Sets" onchange="planEditDraft.exercises[${i}].sets=parseInt(this.value)||3" style="text-align:center;padding:7px 4px">`;
+          html += `<input type="text" value="${pe.reps}" placeholder="e.g. 8–12" onchange="planEditDraft.exercises[${i}].reps=this.value" style="text-align:center;padding:7px 4px">`;
+          html += `<button class="btn-sm btn-danger" onclick="planEditDraft.exercises.splice(${i},1);render()" style="padding:5px 8px">✕</button>`;
+          html += `</div>`;
+        }
+        html += `<button onclick="planEditDraft.exercises.push({name:'',sets:3,reps:'8–12'});render()" style="width:100%;margin-bottom:16px;font-size:12px;padding:7px;border-style:dashed">+ Add exercise</button>`;
+        html += `<button class="btn-primary" style="width:100%;padding:11px" onclick="savePlan()">Save plan</button>`;
+        return html;
+      }
+
+      const myPlans = plans.filter(pl => pl.profile === activeProfile);
+      let html = `<button class="btn-primary" style="width:100%;padding:11px;margin-bottom:16px" onclick="newPlanDraft()">+ New plan</button>`;
+      if (!myPlans.length) return html + `<div class="empty">No plans yet.<br>Create a plan to quickly start a session.</div>`;
+      for (const pl of myPlans) {
+        const exList = pl.exercises.filter(e => e.name);
+        html += `<div style="margin-bottom:10px;padding:12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)">`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:15px;font-weight:500">${pl.name}</div><div style="display:flex;gap:6px"><button class="btn-sm" onclick="editPlan('${pl.id}')">Edit</button><button class="btn-danger btn-sm" onclick="deletePlan('${pl.id}')">Delete</button></div></div>`;
+        for (const pe of exList) {
+          html += `<div style="font-size:13px;display:flex;justify-content:space-between;padding:2px 0;border-top:0.5px solid var(--color-border-tertiary)"><span>${pe.name}</span><span class="muted">${pe.sets} × ${pe.reps}</span></div>`;
+        }
+        html += `<button class="btn-primary" style="width:100%;margin-top:10px;padding:9px;font-size:13px" onclick="startFromPlan('${pl.id}')">Start from this plan</button>`;
+        html += `</div>`;
+      }
+      return html;
+    }
+
+    function newPlanDraft() { planEditDraft = { id: null, name: '', profile: activeProfile, exercises: [{ name: '', sets: 3, reps: '8–12' }] }; render(); }
+
+    function editPlan(id) { const pl = plans.find(p => p.id === id); if (!pl) return; planEditDraft = structuredClone(pl); render(); }
+
+    function savePlan() {
+      const nameEl = document.getElementById('plan-name');
+      if (!nameEl || !nameEl.value.trim()) { alert('Enter a plan name.'); return; }
+      planEditDraft.name = nameEl.value.trim();
+      planEditDraft.exercises = planEditDraft.exercises.filter(e => e.name);
+      if (!planEditDraft.exercises.length) { alert('Add at least one exercise.'); return; }
+      if (!planEditDraft.id) {
+        planEditDraft.id = 'plan_' + uid();
+        planEditDraft.profile = activeProfile;
+        plans.push({ ...planEditDraft });
+      } else {
+        const idx = plans.findIndex(pl => pl.id === planEditDraft.id);
+        if (idx >= 0) plans[idx] = { ...planEditDraft };
+      }
+      planEditDraft = null;
+      save(); render();
+    }
+
+    function deletePlan(id) {
+      const pl = plans.find(p => p.id === id);
+      if (!pl) return;
+      askConfirm(`Delete the plan "${pl.name}"? This cannot be undone.`, async () => {
+        plans = plans.filter(p => p.id !== id);
+        await save();
+      }, 'plans');
+    }
+
+    function startFromPlan(planId) {
+      const plan = plans.find(pl => pl.id === planId);
+      if (!plan) return;
+      const todayId = todaySessionId();
+      const existing = sessions.find(s => s.id === todayId);
+      draft = existing ? structuredClone(existing) : { id: todayId, profile: activeProfile, date: Date.now(), exercises: [], note: '' };
+      for (const pe of plan.exercises) {
+        if (!pe.name) continue;
+        if (!draft.exercises.find(e => e.name === pe.name)) {
+          draft.exercises.push({ name: pe.name, sets: Array.from({ length: pe.sets || 3 }, () => ({ weight: '', reps: '' })), note: '' });
+        }
+      }
+      editing = false;
+      view = 'log';
+      render();
+    }
 
     async function init() {
       if ('serviceWorker' in navigator) {
