@@ -116,15 +116,16 @@
     }
 
     .btn-primary {
-      background: #534AB7;
-      color: #EEEDFE;
-      border-color: #534AB7
+      background: var(--profile-color, #534AB7);
+      color: var(--nav-active-bg, #EEEDFE);
+      border-color: var(--profile-color, #534AB7)
     }
 
     .btn-primary:hover {
-      background: #3C3489;
-      border-color: #3C3489;
-      color: #EEEDFE
+      background: var(--profile-color, #534AB7);
+      border-color: var(--profile-color, #534AB7);
+      color: var(--nav-active-bg, #EEEDFE);
+      filter: brightness(0.88)
     }
 
     .btn-danger {
