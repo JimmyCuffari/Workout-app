@@ -501,6 +501,7 @@
     function lastPerformance(name) {
       const ss = profileSessions();
       for (const s of ss) {
+        if (draft && s.id === draft.id) continue;
         const ex = s.exercises.find(e => e.name === name);
         if (ex) {
           const valid = ex.sets.filter(x => x.weight || x.reps);
