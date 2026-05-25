@@ -1184,7 +1184,8 @@
         for (const pe of exList) {
           const intLvl = INTENSITY_LEVELS.find(l => l.key === pe.intensity);
           const intBadge = intLvl ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${intLvl.bg};color:${intLvl.color};font-weight:500">${intLvl.label}</span>` : '';
-          html += `<div style="font-size:13px;display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:0.5px solid var(--color-border-tertiary)"><span>${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>`;
+          const tags = muscleTags(pe.name);
+          html += `<div style="padding:4px 0;border-top:0.5px solid var(--color-border-tertiary)"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px">${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:12px">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>${tags ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${tags}</div>` : ''}</div>`;
         }
         html += `<button class="btn-primary" style="width:100%;margin-top:10px;padding:9px;font-size:13px" onclick="startFromPlan('${pl.id}')">Start from this plan</button>`;
         html += `</div>`;
@@ -1204,7 +1205,8 @@
           for (const pe of exList) {
             const intLvl = INTENSITY_LEVELS.find(l => l.key === pe.intensity);
             const intBadge = intLvl ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${intLvl.bg};color:${intLvl.color};font-weight:500">${intLvl.label}</span>` : '';
-            html += `<div style="font-size:13px;display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:0.5px solid var(--color-border-tertiary)"><span>${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>`;
+            const tags = muscleTags(pe.name);
+            html += `<div style="padding:4px 0;border-top:0.5px solid var(--color-border-tertiary)"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px">${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:12px">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>${tags ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${tags}</div>` : ''}</div>`;
           }
           html += `</div>`;
         }
