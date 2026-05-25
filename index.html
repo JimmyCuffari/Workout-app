@@ -1181,11 +1181,17 @@
         const exList = pl.exercises.filter(e => e.name);
         html += `<div style="margin-bottom:10px;padding:12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)">`;
         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:15px;font-weight:500">${pl.name}</div><div style="display:flex;gap:6px"><button class="btn-sm" onclick="editPlan('${pl.id}')">Edit</button><button class="btn-danger btn-sm" onclick="deletePlan('${pl.id}')">Delete</button></div></div>`;
+        const muscleCount = {};
+        for (const pe of exList) for (const m of (MUSCLE_MAP[pe.name] || [])) muscleCount[m] = (muscleCount[m] || 0) + 1;
+        if (Object.keys(muscleCount).length) {
+          html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">`;
+          for (const [m, n] of Object.entries(muscleCount)) { const c = MUSCLE_COLORS[m] || { bg: '#F1EFE8', color: '#5F5E5A' }; html += `<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${c.bg};color:${c.color};font-weight:500">${m} ${n}</span>`; }
+          html += `</div>`;
+        }
         for (const pe of exList) {
           const intLvl = INTENSITY_LEVELS.find(l => l.key === pe.intensity);
           const intBadge = intLvl ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${intLvl.bg};color:${intLvl.color};font-weight:500">${intLvl.label}</span>` : '';
-          const tags = muscleTags(pe.name);
-          html += `<div style="padding:4px 0;border-top:0.5px solid var(--color-border-tertiary)"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px">${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:12px">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>${tags ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${tags}</div>` : ''}</div>`;
+          html += `<div style="font-size:13px;display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:0.5px solid var(--color-border-tertiary)"><span>${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:12px">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>`;
         }
         html += `<button class="btn-primary" style="width:100%;margin-top:10px;padding:9px;font-size:13px" onclick="startFromPlan('${pl.id}')">Start from this plan</button>`;
         html += `</div>`;
@@ -1202,11 +1208,17 @@
           html += `<div><div style="font-size:15px;font-weight:500">${pl.name}</div>${owner ? `<div style="font-size:11px;color:var(--color-text-secondary)">${owner.name}</div>` : ''}</div>`;
           html += `<button class="btn-sm" onclick="copyPlan('${pl.id}')">Copy to my plans</button>`;
           html += `</div>`;
+          const muscleCount2 = {};
+          for (const pe of exList) for (const m of (MUSCLE_MAP[pe.name] || [])) muscleCount2[m] = (muscleCount2[m] || 0) + 1;
+          if (Object.keys(muscleCount2).length) {
+            html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">`;
+            for (const [m, n] of Object.entries(muscleCount2)) { const c = MUSCLE_COLORS[m] || { bg: '#F1EFE8', color: '#5F5E5A' }; html += `<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${c.bg};color:${c.color};font-weight:500">${m} ${n}</span>`; }
+            html += `</div>`;
+          }
           for (const pe of exList) {
             const intLvl = INTENSITY_LEVELS.find(l => l.key === pe.intensity);
             const intBadge = intLvl ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${intLvl.bg};color:${intLvl.color};font-weight:500">${intLvl.label}</span>` : '';
-            const tags = muscleTags(pe.name);
-            html += `<div style="padding:4px 0;border-top:0.5px solid var(--color-border-tertiary)"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px">${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:12px">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>${tags ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${tags}</div>` : ''}</div>`;
+            html += `<div style="font-size:13px;display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:0.5px solid var(--color-border-tertiary)"><span>${pe.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:12px">${pe.sets} × ${pe.reps}</span>${intBadge}</div></div>`;
           }
           html += `</div>`;
         }
