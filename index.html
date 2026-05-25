@@ -1176,7 +1176,7 @@
 
       const myPlans = plans.filter(pl => pl.profile === activeProfile);
       let html = `<button class="btn-primary" style="width:100%;padding:11px;margin-bottom:16px" onclick="newPlanDraft()">+ New plan</button>`;
-      if (!myPlans.length) return html + `<div class="empty">No plans yet.<br>Create a plan to quickly start a session.</div>`;
+      if (!myPlans.length) html += `<div class="empty" style="padding:20px 16px">No plans yet.<br>Create one or copy from another user below.</div>`;
       for (const pl of myPlans) {
         const exList = pl.exercises.filter(e => e.name);
         html += `<div style="margin-bottom:10px;padding:12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid var(--color-border-tertiary)">`;
