@@ -1060,6 +1060,8 @@
       const n = document.getElementById('sess-note');
       if (n) draft.note = n.value;
       if (!draft.exercises.length) { alert('Add at least one exercise.'); return; }
+      const hasData = draft.exercises.some(e => e.sets.some(s => s.weight || s.reps));
+      if (!hasData) { alert('Log at least one set before saving.'); return; }
       const idx = sessions.findIndex(s => s.id === draft.id);
       if (idx >= 0) sessions[idx] = draft; else sessions.push(draft);
       editing = false;
