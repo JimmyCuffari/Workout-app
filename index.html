@@ -383,10 +383,10 @@
     const MUSCLE_MAP = { 'Bench Press': ['Chest', 'Triceps', 'Shoulders'], 'Incline Bench': ['Chest', 'Triceps'], 'Pectoral Fly': ['Chest'], 'Dumbbell Chest Press': ['Chest', 'Triceps'], 'Incline Dumbbell': ['Chest', 'Triceps'], 'Chest Press': ['Chest', 'Triceps'], 'Shoulder Press': ['Shoulders', 'Triceps'], 'Dumbbell Shoulder Press': ['Shoulders', 'Triceps'], 'Lateral Raise': ['Shoulders'], 'Rear Deltoid': ['Shoulders', 'Back'], 'Bicep Curl': ['Biceps'], 'Arm Curl': ['Biceps'], 'Hammer Curls': ['Biceps'], 'Triceps Extension': ['Triceps'], 'Tricep Press': ['Triceps'], 'Overhead Tricep Extension': ['Triceps'], 'Tricep Cable': ['Triceps'], 'Skull Crushers': ['Triceps'], 'JM Press': ['Triceps'], 'Dips': ['Chest', 'Triceps'], 'Single-Arm Row': ['Back', 'Biceps'], 'Lat Pulldown': ['Back', 'Biceps'], 'MTS High Row': ['Back', 'Biceps'], 'Row': ['Back', 'Biceps'], 'Leg Press': ['Quads', 'Glutes'], 'Goblet Squat': ['Quads', 'Glutes', 'Core'], 'Romanian Deadlift': ['Hamstrings', 'Glutes'], 'Leg Extension': ['Quads'], 'Seated Leg Curl': ['Hamstrings'], 'Prone Leg Curl': ['Hamstrings'], 'Leg Curl': ['Hamstrings'], 'Calf Raise': ['Calves'], 'Freemotion Calf': ['Calves'], 'Abdominal': ['Core'], 'Torso Rotation': ['Core'], 'Linear Leg Press': ['Quads', 'Glutes'], 'Glute': ['Glutes'], 'Hip Adduction': ['Adductors'], 'Hip Abduction': ['Abductors'], 'Bicep Cable': ['Biceps'], 'Bicep Cable Unilateral': ['Biceps'], 'Dumbbell Russian Twist': ['Core'], 'Running': ['Cardio'], 'Cycling': ['Cardio'], 'Rowing Machine': ['Cardio'], 'Elliptical': ['Cardio'], 'Stair Climber': ['Cardio'], 'Jump Rope': ['Cardio'], 'Swimming': ['Cardio'], 'Walking': ['Cardio'] };
     const MUSCLE_COLORS = { 'Chest': { bg: '#EBF3FF', color: '#1A5E9E' }, 'Triceps': { bg: '#F2EBFE', color: '#6B3BA3' }, 'Shoulders': { bg: '#FEF2E0', color: '#A0520F' }, 'Biceps': { bg: '#FCEBEB', color: '#A32D2D' }, 'Back': { bg: '#E1F5EE', color: '#1A7A3A' }, 'Quads': { bg: '#E0F2F8', color: '#0F6688' }, 'Hamstrings': { bg: '#FDF5C0', color: '#7B6500' }, 'Glutes': { bg: '#FDEEF6', color: '#8E2A64' }, 'Calves': { bg: '#F1EFE8', color: '#5F5E5A' }, 'Core': { bg: '#FEF3C7', color: '#92400E' }, 'Adductors': { bg: '#F0EBFE', color: '#5B3BA3' }, 'Abductors': { bg: '#E8F0FE', color: '#2A5CA3' }, 'Cardio': { bg: '#E0F7FA', color: '#00696B' } };
     function muscleTags(name) { return (MUSCLE_MAP[name] || []).map(g => { const c = MUSCLE_COLORS[g] || { bg: '#F1EFE8', color: '#5F5E5A' }; return `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${c.bg};color:${c.color};font-weight:500">${g}</span>`; }).join(' '); }
-    function sessionVolume(s) { let v = 0; for (const e of s.exercises) { if (e.cardio) continue; for (const x of e.sets) v += (parseFloat(x.weight) || 0) * (parseFloat(x.reps) || 0); } return Math.round(v); }
+    function sessionVolume(s) { let v = 0; for (const e of s.exercises) { if (e.cardio) continue; for (const x of e.sets) v += (parseFloat(x.weight) || 0) * (e.unilateral ? 2 : 1) * (parseFloat(x.reps) || 0); } return Math.round(v); }
     function calcEst1RM(w, r) { if (!w || !r || r > 6) return 0; if (r === 1) return w; return Math.round(w * (1 + r / 30)); }
     function bestEst1RM(name) { let best = 0; for (const s of profileSessions()) { const ex = s.exercises.find(e => e.name === name); if (!ex) continue; for (const x of ex.sets) { const e = calcEst1RM(parseFloat(x.weight) || 0, parseFloat(x.reps) || 0); if (e > best) best = e; } } return best; }
-    function weeklySets() { const cut = Date.now() - 7 * 24 * 60 * 60 * 1000; const map = {}; for (const s of profileSessions()) { if (s.date < cut) continue; for (const e of s.exercises) { for (const m of (MUSCLE_MAP[e.name] || [])) map[m] = (map[m] || 0) + e.sets.filter(x => x.weight || x.reps).length; } } return map; }
+    function weeklySets() { const cut = Date.now() - 7 * 24 * 60 * 60 * 1000; const map = {}; for (const s of profileSessions()) { if (s.date < cut) continue; for (const e of s.exercises) { for (const m of (MUSCLE_MAP[e.name] || [])) map[m] = (map[m] || 0) + e.sets.filter(x => x.weight || x.reps || x.cal).length; } } return map; }
     function toggleExpandEx(name) { expandedExercise = expandedExercise === name ? null : name; render(); }
     function exerciseChartHTML(name, color) {
       const pts = [];
@@ -489,13 +489,36 @@
     function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
     function todaySessionId() { const d = new Date(); return `${activeProfile}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
     function fmt(ts) { return new Date(ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); }
+    function parseDuration(str) {
+      str = String(str || '').trim();
+      if (!str) return '';
+      const parts = str.split(':').map(p => p.trim());
+      if (parts.some(p => p === '' || isNaN(p))) return '';
+      const n = parts.map(Number);
+      let mins;
+      if (n.length === 1) mins = n[0];
+      else if (n.length === 2) mins = n[0] + n[1] / 60;
+      else if (n.length === 3) mins = n[0] * 60 + n[1] + n[2] / 60;
+      else return '';
+      return mins > 0 ? String(Math.round(mins * 600) / 600) : '';
+    }
+    function fmtDuration(mins) {
+      const m = parseFloat(mins);
+      if (!m) return '';
+      const total = Math.round(m * 60), h = Math.floor(total / 3600), mm = Math.floor((total % 3600) / 60), ss = total % 60;
+      return h ? `${h}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${mm}:${String(ss).padStart(2, '0')}`;
+    }
+    function cardioStr(x) { return [fmtDuration(x.weight) || '?', x.cal ? `${x.cal} cal` : '', x.reps ? `${x.reps} mi` : ''].filter(Boolean).join(' · '); }
     function profile() { return PROFILES.find(p => p.id === activeProfile) || PROFILES[0]; }
     function profileSessions(pid) { return sessions.filter(s => s.profile === (pid || activeProfile)).sort((a, b) => b.date - a.date); }
     function maxWeight(n) { let m = 0; for (const s of profileSessions()) { for (const e of s.exercises) { if (e.name === n) { for (const x of e.sets) { const w = parseFloat(x.weight) || 0; if (w > m) m = w; } } } } return m; }
     function historicalMaxWeight(n) { let m = 0; for (const s of profileSessions()) { if (draft && s.id === draft.id) continue; for (const e of s.exercises) { if (e.name === n) { for (const x of e.sets) { const w = parseFloat(x.weight) || 0; if (w > m) m = w; } } } } return m; }
     function checkPR(input, pb) { const sn = input.closest('.set-row').querySelector('.set-num'); if (!sn) return; const isPR = pb > 0 && (parseFloat(input.value) || 0) > pb; sn.style.background = isPR ? '#FEF3C7' : ''; sn.style.color = isPR ? '#92400E' : ''; }
-    function toggleBW(ei) { saveNote(); draft.exercises[ei].bodyweight = !draft.exercises[ei].bodyweight; render(); autoSave(); }
-    function toggleCardio(ei) { saveNote(); draft.exercises[ei].cardio = !draft.exercises[ei].cardio; if (draft.exercises[ei].cardio) { draft.exercises[ei].bodyweight = false; } render(); autoSave(); }
+    function toggleBW(ei) { saveNote(); draft.exercises[ei].bodyweight = !draft.exercises[ei].bodyweight; if (draft.exercises[ei].bodyweight) draft.exercises[ei].unilateral = false; render(); autoSave(); }
+    function toggleUni(ei) { saveNote(); draft.exercises[ei].unilateral = !draft.exercises[ei].unilateral; render(); autoSave(); }
+    function lastUnilateral(name) { for (const s of profileSessions()) { if (draft && s.id === draft.id) continue; const ex = s.exercises.find(e => e.name === name); if (ex) return !!ex.unilateral; } return false; }
+    function uniTotal(w) { return (parseFloat(w) || 0) * 2; }
+    function toggleCardio(ei) { saveNote(); draft.exercises[ei].cardio = !draft.exercises[ei].cardio; if (draft.exercises[ei].cardio) { draft.exercises[ei].bodyweight = false; draft.exercises[ei].unilateral = false; } render(); autoSave(); }
     function allEx() { return [...new Set([...EXERCISES, ...(customExercises[activeProfile] || [])])].sort(); }
 
     function lastPerformance(name) {
@@ -504,7 +527,7 @@
         if (draft && s.id === draft.id) continue;
         const ex = s.exercises.find(e => e.name === name);
         if (ex) {
-          const valid = ex.sets.filter(x => x.weight || x.reps);
+          const valid = ex.sets.filter(x => x.weight || x.reps || x.cal);
           if (valid.length) return { date: s.date, sets: valid, note: ex.note || '' };
         }
       }
@@ -609,6 +632,24 @@
       await save();
     }
 
+    let autoSaveTimer = null;
+    function autoSaveSoon() {
+      if (!draft) return;
+      const idx = sessions.findIndex(s => s.id === draft.id);
+      if (idx >= 0) sessions[idx] = structuredClone(draft); else sessions.push(structuredClone(draft));
+      saveLocal();
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = setTimeout(autoSave, 800);
+    }
+    function flushDraft() {
+      if (!draft) return;
+      saveNote();
+      clearTimeout(autoSaveTimer);
+      autoSave();
+    }
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDraft(); });
+    globalThis.addEventListener('pagehide', flushDraft);
+
     function render() {
       const p = profile();
       const themeMeta = document.getElementById('theme-meta'); if (themeMeta) themeMeta.content = p.color;
@@ -690,7 +731,7 @@
       }
 
       const sessionDate = editing ? fmt(draft.date) : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-      let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><div style="font-size:16px;font-weight:500">${editing ? 'Edit session' : 'New session'}</div><div class="muted">${sessionDate}</div></div><button class="btn-danger btn-sm" onclick="cancelSession()">Cancel</button></div>`;
+      let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><div style="font-size:16px;font-weight:500">${editing ? 'Edit session' : 'New session'}</div><div class="muted">${sessionDate}</div></div><button class="btn-danger btn-sm" onclick="cancelSession()">Close</button></div>`;
       html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:14px"><span style="font-size:11px;color:var(--color-text-secondary)">Rest:</span>${[60, 90, 120, 180].map(s => `<button class="btn-sm" onclick="startTimer(${s})" style="font-size:11px;padding:4px 9px">${s < 120 ? s + 's' : s / 60 + 'm'}</button>`).join('')}</div>`;
 
       for (let ei = 0; ei < draft.exercises.length; ei++) {
@@ -700,10 +741,11 @@
 
         const tags = muscleTags(ex.name);
         const bwBtn = ex.cardio ? '' : `<button class="btn-sm${ex.bodyweight ? ' btn-primary' : ''}" onclick="toggleBW(${ei})" style="font-size:11px">BW</button>`;
-        html += `<div class="exercise-item"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${tags ? '4px' : '8px'}"><div style="font-weight:500;font-size:14px">${ex.name}</div><div style="display:flex;gap:6px">${bwBtn}<button class="btn-sm${ex.cardio ? ' btn-primary' : ''}" onclick="toggleCardio(${ei})" style="font-size:11px">Cardio</button><button class="btn-danger btn-sm" onclick="removeEx(${ei})">Remove</button></div></div>${tags ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${tags}</div>` : ''}`;
+        const uniBtn = (ex.cardio || ex.bodyweight) ? '' : `<button class="btn-sm${ex.unilateral ? ' btn-primary' : ''}" onclick="toggleUni(${ei})" style="font-size:11px">×2</button>`;
+        html += `<div class="exercise-item"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${tags ? '4px' : '8px'}"><div style="font-weight:500;font-size:14px">${ex.name}</div><div style="display:flex;gap:6px">${uniBtn}${bwBtn}<button class="btn-sm${ex.cardio ? ' btn-primary' : ''}" onclick="toggleCardio(${ei})" style="font-size:11px">Cardio</button><button class="btn-danger btn-sm" onclick="removeEx(${ei})">Remove</button></div></div>${tags ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${tags}</div>` : ''}`;
 
         if (lp) {
-          const setStr = lp.sets.map(s => ex.cardio ? `${s.weight || '?'} min${s.reps ? ` / ${s.reps} mi` : ''}` : ex.bodyweight ? `BW × ${s.reps || '?'}` : `${s.weight || '?'} × ${s.reps || '?'}`).join('  ·  ');
+          const setStr = lp.sets.map(s => ex.cardio ? cardioStr(s) : ex.bodyweight ? `BW × ${s.reps || '?'}` : `${s.weight || '?'} × ${s.reps || '?'}${ex.unilateral && uniTotal(s.weight) ? ` (${uniTotal(s.weight)} total)` : ''}`).join('  ·  ');
           html += `<div class="last-perf">
         <div class="last-perf-title">Last time — ${fmt(lp.date)}</div>
         <div class="last-perf-sets">${setStr}</div>
@@ -713,8 +755,8 @@
           html += `<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:8px">Personal best: <b>${pb} lbs</b></div>`;
         }
 
-        const col1Label = ex.cardio ? 'Mins' : ex.bodyweight ? 'Bodyweight' : 'Weight (lbs)';
-        const col2Label = ex.cardio ? 'Dist (mi)' : 'Reps';
+        const col1Label = ex.cardio ? 'Time' : ex.bodyweight ? 'Bodyweight' : ex.unilateral ? 'Weight / hand (lbs)' : 'Weight (lbs)';
+        const col2Label = ex.cardio ? 'Calories' : 'Reps';
         html += `<div style="display:grid;grid-template-columns:22px 1fr 1fr auto;gap:6px;margin-bottom:4px;font-size:11px;color:var(--color-text-secondary);padding:0 2px"><span></span><span>${col1Label}</span><span>${col2Label}</span><span></span></div>`;
         for (let si = 0; si < ex.sets.length; si++) {
           const s = ex.sets[si];
@@ -722,15 +764,15 @@
           const snStyle = isPR ? 'background:#FEF3C7;color:#92400E;' : '';
           let weightCell;
           if (ex.cardio) {
-            weightCell = `<input type="number" placeholder="mins" value="${s.weight || ''}" min="0" step="1" onchange="updSet(${ei},${si},'weight',this.value)" style="padding:7px 8px;text-align:center">`;
+            weightCell = `<input type="text" placeholder="mm:ss" value="${fmtDuration(s.weight)}" onchange="updSet(${ei},${si},'weight',parseDuration(this.value));this.value=fmtDuration(draft.exercises[${ei}].sets[${si}].weight)" style="padding:7px 8px;text-align:center">`;
           } else if (ex.bodyweight) {
             weightCell = `<div style="display:flex;align-items:center;justify-content:center;border:0.5px solid var(--color-border-secondary);border-radius:8px;font-size:13px;font-weight:500;color:var(--color-text-secondary)">BW</div>`;
           } else {
-            weightCell = `<input type="number" placeholder="lbs" value="${s.weight || ''}" min="0" step="2.5" onchange="updSet(${ei},${si},'weight',this.value)" oninput="checkPR(this,${pb})" style="padding:7px 8px;text-align:center">`;
+            weightCell = `<input type="number" placeholder="lbs" value="${s.weight || ''}" min="0" step="2.5" oninput="updSet(${ei},${si},'weight',this.value);checkPR(this,${pb})" style="padding:7px 8px;text-align:center">`;
           }
-          const repsStep = ex.cardio ? '0.1' : '1';
-          const repsPlaceholder = ex.cardio ? 'mi' : 'reps';
-          html += `<div class="set-row"><div class="set-num" style="${snStyle}">${si + 1}</div>${weightCell}<input type="number" placeholder="${repsPlaceholder}" value="${s.reps || ''}" min="0" step="${repsStep}" onchange="updSet(${ei},${si},'reps',this.value)" style="padding:7px 8px;text-align:center"><button class="btn-sm btn-danger" onclick="removeSet(${ei},${si})" style="padding:5px 8px">x</button></div>`;
+          const f2 = ex.cardio ? 'cal' : 'reps';
+          const f2Placeholder = ex.cardio ? 'cal' : 'reps';
+          html += `<div class="set-row"><div class="set-num" style="${snStyle}">${si + 1}</div>${weightCell}<input type="number" inputmode="numeric" placeholder="${f2Placeholder}" value="${s[f2] || ''}" min="0" step="1" oninput="updSet(${ei},${si},'${f2}',this.value)" style="padding:7px 8px;text-align:center"><button class="btn-sm btn-danger" onclick="removeSet(${ei},${si})" style="padding:5px 8px">x</button></div>`;
         }
         html += `<button onclick="addSet(${ei})" style="width:100%;margin-top:4px;padding:6px;font-size:12px;border-style:dashed">+ Add set</button></div>`;
       }
@@ -738,7 +780,7 @@
       html += `<div class="sec-label">Add exercise</div><div style="display:flex;gap:8px;margin-bottom:8px"><select id="ex-sel" style="flex:1"><option value="">Select exercise...</option>`;
       for (const e of allEx()) html += `<option value="${e}">${e}</option>`;
       html += `</select><button onclick="addExFromSel()">Add</button></div><div style="display:flex;gap:8px;margin-bottom:16px"><input id="custom-ex" type="text" placeholder="Or type a custom exercise..." style="flex:1"><button onclick="addCustomEx()">Add</button></div>`;
-      html += `<div class="sec-label">Session notes</div><textarea id="sess-note" placeholder="How did it feel? PRs?" style="margin-bottom:16px">${draft.note || ''}</textarea>`;
+      html += `<div class="sec-label">Session notes</div><textarea id="sess-note" placeholder="How did it feel? PRs?" oninput="draft.note=this.value;autoSaveSoon()" style="margin-bottom:16px">${draft.note || ''}</textarea>`;
       html += `<button class="btn-primary" style="width:100%;padding:12px;font-size:15px" onclick="saveSession()">${editing ? 'Update session' : 'Save session'}</button>`;
       return html;
     }
@@ -755,18 +797,18 @@
           html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="display:flex;flex-wrap:wrap;gap:3px">${muscles.map(g => { const c = MUSCLE_COLORS[g] || { bg: '#F1EFE8', color: '#5F5E5A' }; return `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${c.bg};color:${c.color};font-weight:500">${g}</span>`; }).join('')}</div>${vol > 0 ? `<span style="font-size:11px;color:var(--color-text-secondary);white-space:nowrap;margin-left:8px">${vol.toLocaleString()} lbs</span>` : ''}</div>`;
         }
         for (const e of s.exercises) {
-          const v = e.sets.filter(x => x.weight || x.reps);
+          const v = e.sets.filter(x => x.weight || x.reps || x.cal);
           if (!v.length) continue;
           const mx = Math.max(0, ...v.map(x => parseFloat(x.weight) || 0));
           let str, badge;
           if (e.cardio) {
-            str = v.map(x => `${x.weight || '?'}min${x.reps ? `/${x.reps}mi` : ''}`).join('  ');
-            badge = mx > 0 ? `<span class="badge badge-accent" style="margin-left:6px;font-size:10px">${mx} min</span>` : '';
+            str = v.map(cardioStr).join('  ');
+            badge = mx > 0 ? `<span class="badge badge-accent" style="margin-left:6px;font-size:10px">${fmtDuration(mx)}</span>` : '';
           } else if (e.bodyweight) {
             str = v.map(x => `BW×${x.reps || '?'}`).join('  ');
             badge = '';
           } else {
-            str = v.map(x => `${x.weight || '?'}×${x.reps || '?'}`).join('  ');
+            str = v.map(x => `${x.weight || '?'}×${x.reps || '?'}${e.unilateral && uniTotal(x.weight) ? ` (${uniTotal(x.weight)})` : ''}`).join('  ');
             badge = mx > 0 ? `<span class="badge badge-accent" style="margin-left:6px;font-size:10px">${mx} lbs</span>` : '';
           }
           html += `<div style="font-size:13px;margin-bottom:3px"><span style="font-weight:500">${e.name}</span><span class="muted" style="margin-left:6px;font-size:12px">${str}</span>${badge}</div>`;
@@ -796,11 +838,11 @@
             const isBW = !isCardio && (e.bodyweight || e.sets.every(x => !x.weight));
             for (const x of e.sets) {
               const w = parseFloat(x.weight) || 0;
-              const r = parseFloat(x.reps) || 0;
-              if (!w && !r) continue;
+              const r = parseFloat(isCardio ? x.cal : x.reps) || 0;
+              if (!w && !r && !x.reps) continue;
               const cur = best[e.name];
               if (!cur || w > cur.weight || (w === cur.weight && r > cur.reps))
-                best[e.name] = { weight: w, reps: r, date: s.date, bw: isBW, cardio: isCardio };
+                best[e.name] = { weight: w, reps: r, date: s.date, bw: isBW, cardio: isCardio, set: x };
             }
           }
         }
@@ -809,7 +851,7 @@
         let html = toggle;
         for (const [name, d] of entries) {
           let setStr;
-          if (d.cardio) setStr = `${d.weight} min${d.reps ? ` / ${d.reps} mi` : ''}`;
+          if (d.cardio) setStr = cardioStr(d.set);
           else if (d.bw) setStr = `BW × ${d.reps} reps`;
           else setStr = `${d.weight} lbs × ${d.reps} reps`;
           const e1rm = (d.bw || d.cardio) ? 0 : bestEst1RM(name);
@@ -894,9 +936,10 @@
         const barW = d.peak > 0 ? Math.round((d.last / d.peak) * 100) : 100;
         const col = pct > 0 ? '#0F6E56' : pct < 0 ? '#A32D2D' : '#5F5E5A';
         const bg = pct > 0 ? '#E1F5EE' : pct < 0 ? '#FCEBEB' : '#F1EFE8';
-        const unit = d.cardio ? 'min' : d.bw ? 'reps' : 'lbs';
+        const unit = d.bw ? 'reps' : 'lbs';
+        const fv = val => d.cardio ? fmtDuration(val) : `${val} ${unit}`;
         const expanded = expandedExercise === name;
-        html += `<div onclick="toggleExpandEx('${name}')" style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid ${expanded ? p.color : 'var(--color-border-tertiary)'};cursor:pointer"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:14px;font-weight:500">${name}</span><span class="badge" style="background:${bg};color:${col}">${pct > 0 ? '+' : ''}${pct}%</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px"><span>Start: ${d.first} ${unit}</span><span>Now: ${d.last} ${unit}</span><span>Peak: ${d.peak} ${unit}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${barW}%;background:${p.color}"></div></div>${expanded ? exerciseChartHTML(name, p.color) : ''}</div>`;
+        html += `<div onclick="toggleExpandEx('${name}')" style="margin-bottom:8px;padding:10px 12px;background:var(--color-background-secondary);border-radius:10px;border:0.5px solid ${expanded ? p.color : 'var(--color-border-tertiary)'};cursor:pointer"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:14px;font-weight:500">${name}</span><span class="badge" style="background:${bg};color:${col}">${pct > 0 ? '+' : ''}${pct}%</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px"><span>Start: ${fv(d.first)}</span><span>Now: ${fv(d.last)}</span><span>Peak: ${fv(d.peak)}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${barW}%;background:${p.color}"></div></div>${expanded ? exerciseChartHTML(name, p.color) : ''}</div>`;
       }
       return html;
     }
@@ -1060,7 +1103,8 @@
       const n = document.getElementById('sess-note');
       if (n) draft.note = n.value;
       if (!draft.exercises.length) { alert('Add at least one exercise.'); return; }
-      const hasData = draft.exercises.some(e => e.sets.some(s => s.weight || s.reps));
+      clearTimeout(autoSaveTimer);
+      const hasData = draft.exercises.some(e => e.sets.some(s => s.weight || s.reps || s.cal));
       if (!hasData) { alert('Log at least one set before saving.'); return; }
       const idx = sessions.findIndex(s => s.id === draft.id);
       if (idx >= 0) sessions[idx] = draft; else sessions.push(draft);
@@ -1089,7 +1133,7 @@
       const s = document.getElementById('ex-sel');
       if (!s || !s.value) return;
       saveNote();
-      draft.exercises.push({ name: s.value, sets: [{ weight: '', reps: '' }], note: '' });
+      draft.exercises.push({ name: s.value, sets: [{ weight: '', reps: '' }], note: '', unilateral: lastUnilateral(s.value) });
       render();
       autoSave();
     }
@@ -1100,7 +1144,7 @@
       if (!customExercises[activeProfile]) customExercises[activeProfile] = [];
       if (!customExercises[activeProfile].includes(n) && !EXERCISES.includes(n)) customExercises[activeProfile].push(n);
       saveNote();
-      draft.exercises.push({ name: n, sets: [{ weight: '', reps: '' }], note: '' });
+      draft.exercises.push({ name: n, sets: [{ weight: '', reps: '' }], note: '', unilateral: lastUnilateral(n) });
       render();
       autoSave();
     }
@@ -1113,7 +1157,7 @@
       render();
       autoSave();
     }
-    function updSet(ei, si, f, v) { draft.exercises[ei].sets[si][f] = v; autoSave(); }
+    function updSet(ei, si, f, v) { draft.exercises[ei].sets[si][f] = v; autoSaveSoon(); }
     function saveNote() { const n = document.getElementById('sess-note'); if (n && draft) draft.note = n.value; }
 
     globalThis.addEventListener('offline', () => {
@@ -1287,7 +1331,7 @@
             const best = maxWeight(pe.name);
             if (lvl && best > 0) suggestedWeight = String(Math.round(best * lvl.pct / 2.5) * 2.5);
           }
-          draft.exercises.push({ name: pe.name, sets: Array.from({ length: pe.sets || 3 }, () => ({ weight: suggestedWeight, reps: '' })), note: '' });
+          draft.exercises.push({ name: pe.name, sets: Array.from({ length: pe.sets || 3 }, () => ({ weight: suggestedWeight, reps: '' })), note: '', unilateral: lastUnilateral(pe.name) });
         }
       }
       editing = false;
