@@ -555,6 +555,72 @@
       });
       if (!r.ok) throw new Error('put failed');
     }
+    async function patchBin(data, prevRev) {
+      const revFilter = prevRev == null ? 'data->>rev=is.null' : `data->>rev=eq.${prevRev}`;
+      const r = await fetch(`${SB_URL}/rest/v1/workout_data?id=eq.1&${revFilter}`, {
+        method: 'PATCH',
+        headers: { ...SB_HEADERS, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify({ data })
+      });
+      if (!r.ok) throw new Error('patch failed');
+      return (await r.json()).length > 0;
+    }
+
+    // Sync = fetch remote, 3-way merge against the last-synced copy (base), write back only if remote is unchanged.
+    const BASE_KEY = 'wt-base-v1';
+    function loadBase() { try { return JSON.parse(localStorage.getItem(BASE_KEY) || 'null'); } catch { return null; } }
+    function saveBase(d) { try { localStorage.setItem(BASE_KEY, JSON.stringify(d)); } catch (e) { console.warn('Could not write sync base:', e); } }
+    function pickData(d) { return { sessions: d.sessions || [], customExercises: migrateCustomEx(d.customExercises), customProfiles: d.customProfiles || [], baseProfileOverrides: d.baseProfileOverrides || {}, plans: d.plans || [] }; }
+    function byId(arr) { const m = {}; for (const x of arr || []) m[x.id] = x; return m; }
+    function filledSets(s) { return s.exercises.reduce((a, e) => a + e.sets.filter(x => x.weight || x.reps || x.cal).length, 0); }
+    function merge3(base, local, remote, resolve) {
+      const out = {}, same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      for (const k of new Set([...Object.keys(local), ...Object.keys(remote), ...Object.keys(base || {})])) {
+        const l = local[k], r = remote[k], b = base ? base[k] : undefined;
+        let v;
+        if (l === undefined) v = b !== undefined && same(r, b) ? undefined : r;
+        else if (r === undefined) v = b !== undefined && same(l, b) ? undefined : l;
+        else if (same(l, r)) v = l;
+        else if (b !== undefined && same(l, b)) v = r;
+        else if (b !== undefined && same(r, b)) v = l;
+        else v = resolve(l, r);
+        if (v !== undefined) out[k] = v;
+      }
+      return out;
+    }
+    function mergeList(baseArr, localArr, remoteArr, hasBase, resolve) {
+      const m = merge3(hasBase ? byId(baseArr) : null, byId(localArr), byId(remoteArr), resolve);
+      return [...new Set([...localArr.map(x => x.id), ...remoteArr.map(x => x.id)])].filter(id => id in m).map(id => m[id]);
+    }
+    function mergeData(base, local, remote) {
+      const hb = !!base, b = base || {};
+      const keepLocal = l => l;
+      return {
+        sessions: mergeList(b.sessions, local.sessions, remote.sessions, hb, (l, r) => { const fl = filledSets(l), fr = filledSets(r); return (hb ? fl >= fr : fl > fr) ? l : r; }),
+        customExercises: merge3(hb ? b.customExercises || {} : null, local.customExercises, remote.customExercises, (l, r) => [...new Set([...r, ...l])]),
+        customProfiles: mergeList(b.customProfiles, local.customProfiles, remote.customProfiles, hb, keepLocal),
+        baseProfileOverrides: merge3(hb ? b.baseProfileOverrides || {} : null, local.baseProfileOverrides, remote.baseProfileOverrides, keepLocal),
+        plans: mergeList(b.plans, local.plans, remote.plans, hb, keepLocal),
+      };
+    }
+    async function syncNow(prefetched) {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const remote = attempt === 0 && prefetched !== undefined ? prefetched : await fetchBin();
+        const local = structuredClone(pickData({ sessions, customExercises, customProfiles, baseProfileOverrides, plans }));
+        const merged = remote ? mergeData(loadBase(), local, pickData(remote)) : local;
+        const changed = JSON.stringify(merged) !== JSON.stringify(local);
+        sessions = merged.sessions; customExercises = merged.customExercises; customProfiles = merged.customProfiles; baseProfileOverrides = merged.baseProfileOverrides; plans = merged.plans;
+        buildProfiles();
+        saveLocal();
+        if (remote && JSON.stringify(merged) === JSON.stringify(pickData(remote))) { saveBase(merged); return changed; }
+        const payload = { ...merged, rev: (remote?.rev || 0) + 1 };
+        const ok = remote ? await patchBin(payload, remote.rev) : (await putBin(payload), true);
+        if (ok) { saveBase(merged); return changed; }
+      }
+      throw new Error('sync conflict');
+    }
+    let syncQueue = Promise.resolve();
+    function sync(prefetched) { const p = syncQueue.then(() => syncNow(prefetched)); syncQueue = p.catch(() => {}); return p; }
 
     function showSync(status, msg) {
       const el = document.getElementById('sync-bar');
@@ -581,30 +647,12 @@
 
       // Sync with Supabase in the background
       try {
-        const rec = await fetchBin();
-        if (rec && rec.sessions && rec.sessions.length) {
-          const localSnap = sessions;
-          const merged = rec.sessions.map(rs => { const ls = localSnap.find(s => s.id === rs.id); return (ls && ls.exercises.length > rs.exercises.length) ? ls : rs; });
-          const remoteIds = new Set(rec.sessions.map(s => s.id));
-          sessions = [...merged, ...localSnap.filter(s => !remoteIds.has(s.id))];
-          customExercises = mergeCustomEx(customExercises, migrateCustomEx(rec.customExercises));
-          const remProf = rec.customProfiles || [];
-          const remProfIds = new Set(remProf.map(p => p.id));
-          customProfiles = [...remProf, ...customProfiles.filter(p => !remProfIds.has(p.id))];
-          baseProfileOverrides = { ...(rec.baseProfileOverrides || {}), ...baseProfileOverrides };
-          const remPlans = rec.plans || [];
-          const remPlanIds = new Set(remPlans.map(pl => pl.id));
-          plans = [...remPlans, ...plans.filter(pl => !remPlanIds.has(pl.id))];
-          buildProfiles();
-          saveLocal();
-        } else if (!local) {
-          sessions = [...SEED];
-          await putBin({ sessions, customExercises: [], customProfiles: [], baseProfileOverrides: {} });
-          saveLocal();
-        }
+        const row = await fetchBin();
+        if (!row && !local) sessions = [...SEED];
         migrateNames();
+        await sync(row);
       } catch {
-        if (!local) {
+        if (!sessions.length) {
           sessions = [...SEED];
           migrateNames();
         }
@@ -617,8 +665,9 @@
       saveLocal();
       showSync('syncing', 'Saving...');
       try {
-        await putBin({ sessions, customExercises, customProfiles, baseProfileOverrides, plans });
+        const changed = await sync();
         showSync('synced', 'Synced — ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+        if (changed && !(draft && view === 'log')) render();
       } catch {
         showSync('offline', 'Saved locally — will sync when back online');
       }
@@ -1166,25 +1215,7 @@
     globalThis.addEventListener('online', async () => {
       showSync('syncing', 'Back online — syncing...');
       try {
-        const rec = await fetchBin();
-        if (rec && rec.sessions && rec.sessions.length) {
-          const localSnap = sessions;
-          const merged = rec.sessions.map(rs => { const ls = localSnap.find(s => s.id === rs.id); return (ls && ls.exercises.length > rs.exercises.length) ? ls : rs; });
-          const remoteIds = new Set(rec.sessions.map(s => s.id));
-          sessions = [...merged, ...localSnap.filter(s => !remoteIds.has(s.id))];
-          customExercises = mergeCustomEx(customExercises, migrateCustomEx(rec.customExercises));
-          const remProf2 = rec.customProfiles || [];
-          const remProfIds2 = new Set(remProf2.map(p => p.id));
-          customProfiles = [...remProf2, ...customProfiles.filter(p => !remProfIds2.has(p.id))];
-          baseProfileOverrides = { ...(rec.baseProfileOverrides || {}), ...baseProfileOverrides };
-          const remPlans2 = rec.plans || [];
-          const remPlanIds2 = new Set(remPlans2.map(pl => pl.id));
-          plans = [...remPlans2, ...plans.filter(pl => !remPlanIds2.has(pl.id))];
-          buildProfiles();
-          migrateNames();
-          saveLocal();
-        }
-        await putBin({ sessions, customExercises, customProfiles, baseProfileOverrides, plans });
+        await sync();
         showSync('synced', 'Back online — synced');
         render();
       } catch {
